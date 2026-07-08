@@ -41,7 +41,11 @@ button{cursor:pointer;font-family:inherit}
 .chip{border:1px solid var(--line);background:#fff;border-radius:20px;padding:5px 11px;font-size:12.5px;color:var(--navy)}
 .chip.sel{background:var(--navy);border-color:var(--navy);color:#fff;font-weight:700}
 .cmin{width:78px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-family:inherit}
-.cbx{width:18px;height:18px;margin-top:2px;accent-color:var(--navy)}
+.tsum{font-size:12.5px;font-weight:800;color:var(--navy);white-space:nowrap;padding-top:2px}
+.lx{border:none;background:none;color:var(--mut);font-size:14px;line-height:1;padding:4px 6px;border-radius:6px}
+.lx:hover{background:#f2ddd9;color:#b3261e}
+.addline{border:1px dashed var(--line);background:#fff;color:var(--navy);border-radius:8px;padding:5px 12px;font-size:12.5px;font-weight:700;margin-top:8px}
+.addline:hover{border-color:var(--navy);background:var(--beige-soft)}
 .foot{position:sticky;bottom:0;background:linear-gradient(#f5f3eccc,#f5f3ec);padding:12px 0;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 .total{font-size:15px;font-weight:800}.total span{color:var(--navy)}
 .muted{color:var(--mut)}

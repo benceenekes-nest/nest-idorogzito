@@ -6,14 +6,15 @@ import { ACTIVITIES } from "../lib/clients";
 const DURS=[15,30,45,60,90,120];
 const FINISHED=["done","complete","kész","closed","cancelled","törölve"];
 function fmt(m){ if(!m) return "0 p"; const h=Math.floor(m/60),r=m%60; return (h?h+" ó ":"")+(r?r+" p":(h?"":"0 p")); }
+const emptyLine=()=>({activity:"",min:0});
 
 export default function Home(){
   const { data:session, status } = useSession();
   const [date,setDate]=useState(new Date().toISOString().slice(0,10));
   const [tasks,setTasks]=useState([]);
   const [me,setMe]=useState(null);
-  const [ent,setEnt]=useState({});        // taskId -> {on,activity,min}
-  const [msg,setMsg]=useState(null);       // {type,text}
+  const [ent,setEnt]=useState({});
+  const [msg,setMsg]=useState(null);
   const [loading,setLoading]=useState(false);
   const [showDone,setShowDone]=useState(false);
 
@@ -26,32 +27,52 @@ export default function Home(){
       setMe(data.me);
       setTasks(data.tasks||[]);
       const e={};
-      (data.prefill||[]).forEach(p=>{ e[p.task_id]={on:true, activity:p.activity||"", min:Number(p.minutes)||0}; });
+      (data.prefill||[]).forEach(p=>{
+        const id=p.task_id;
+        if(!e[id]) e[id]={on:true, lines:[]};
+        e[id].lines.push({activity:p.activity||"", min:Number(p.minutes)||0});
+      });
+      Object.values(e).forEach(x=>{ if(!x.lines.length) x.lines=[emptyLine()]; });
       setEnt(e);
     }catch(e){ setMsg({type:"err",text:e.message}); }
     finally{ setLoading(false); }
   }
   useEffect(()=>{ if(status==="authenticated") load(); },[status]);
 
-  function upd(id,patch){ setEnt(s=>({ ...s, [id]:{ on:false,activity:"",min:0, ...(s[id]||{}), ...patch } })); }
+  function get(id){ return ent[id] || {on:false, lines:[emptyLine()]}; }
+  function toggle(id, on){
+    const cur=get(id);
+    setEnt(s=>({ ...s, [id]:{ on, lines: (cur.lines&&cur.lines.length)?cur.lines:[emptyLine()] } }));
+  }
+  function setLine(id, i, patch){
+    const cur=get(id); const lines=cur.lines.map((l,idx)=> idx===i?{...l,...patch}:l);
+    setEnt(s=>({ ...s, [id]:{ ...cur, lines } }));
+  }
+  function addLine(id){ const cur=get(id); setEnt(s=>({ ...s, [id]:{ ...cur, lines:[...cur.lines, emptyLine()] } })); }
+  function removeLine(id, i){
+    const cur=get(id); let lines=cur.lines.filter((_,idx)=>idx!==i);
+    if(!lines.length) lines=[emptyLine()];
+    setEnt(s=>({ ...s, [id]:{ ...cur, lines } }));
+  }
 
   const grouped = useMemo(()=>{
     let list = tasks.filter(t=> showDone ? true : !FINISHED.includes((t.status||"").toLowerCase()));
-    list = list.slice().sort((a,b)=>{
+    return list.slice().sort((a,b)=>{
       if(a.client!==b.client) return a.client.localeCompare(b.client,"hu");
       return (a.name||"").localeCompare(b.name||"","hu");
     });
-    return list;
   },[tasks,showDone]);
 
-  const total = useMemo(()=> Object.values(ent).reduce((a,e)=> a+(e.on? (e.min||0):0),0),[ent]);
+  const total = useMemo(()=> Object.values(ent).reduce((a,e)=> a+(e.on? e.lines.reduce((s,l)=>s+(l.min||0),0):0),0),[ent]);
   const doneCount = tasks.filter(t=>FINISHED.includes((t.status||"").toLowerCase())).length;
 
   async function submit(){
-    const rows = tasks.filter(t=>ent[t.id]?.on && (ent[t.id]?.min||0)>0).map(t=>({
-      taskId:t.id, taskName:t.name, parentId:t.parentId, parentName:t.parentName,
-      client:t.client, activity:ent[t.id].activity, minutes:ent[t.id].min
-    }));
+    const rows=[];
+    tasks.forEach(t=>{ const e=ent[t.id]; if(!e||!e.on) return;
+      e.lines.forEach(l=>{ if((l.min||0)>0) rows.push({
+        taskId:t.id, taskName:t.name, parentId:t.parentId, parentName:t.parentName,
+        client:t.client, activity:l.activity, minutes:l.min }); });
+    });
     if(!rows.length){ setMsg({type:"err",text:"Pipálj be legalább egy feladatot és adj meg időt."}); return; }
     setLoading(true); setMsg(null);
     try{
@@ -86,14 +107,14 @@ export default function Home(){
           <div className="fld"><label>Nap</label>
             <input type="date" value={date} onChange={e=>setDate(e.target.value)}/></div>
           <button className="btn" onClick={()=>load()} disabled={loading}>{loading?"Betöltés…":"Feladatok behívása"}</button>
-          <span className="muted" style={{fontSize:12}}>Csak azt pipáld, amin aznap dolgoztál.</span>
+          <span className="muted" style={{fontSize:12}}>Csak azt pipáld, amin aznap dolgoztál. Egy feladathoz több tevékenység is felvihető.</span>
         </div>
       </div>
 
       {msg && <div className={"status "+msg.type}>{msg.text}</div>}
 
       {grouped.map(t=>{
-        const e = ent[t.id]||{on:false,activity:"",min:0};
+        const e = get(t.id);
         const header = t.client!==lastClient ? (lastClient=t.client, t.client) : null;
         return (
           <div key={t.id}>
@@ -101,7 +122,7 @@ export default function Home(){
             <div className={"task"+(e.on?" on":"")}>
               <div className="thead">
                 <input type="checkbox" className="cbx" checked={!!e.on}
-                  onChange={ev=>upd(t.id,{on:ev.target.checked, ...(ev.target.checked?{}:{min:0,activity:""})})}/>
+                  onChange={ev=>toggle(t.id, ev.target.checked)}/>
                 <div style={{flex:1}}>
                   <div className="tname">
                     <a href={t.url} target="_blank" rel="noopener">{t.name}</a>
@@ -110,23 +131,26 @@ export default function Home(){
                   </div>
                   {t.parentName && <div className="sub">Szülő: {t.parentName}</div>}
                 </div>
+                {e.on && <div className="tsum">{fmt(e.lines.reduce((s,l)=>s+(l.min||0),0))}</div>}
               </div>
-              {e.on && (
-                <div className="controls">
-                  <select value={e.activity} onChange={ev=>upd(t.id,{activity:ev.target.value})}>
+              {e.on && e.lines.map((l,i)=>(
+                <div className="controls" key={i}>
+                  <select value={l.activity} onChange={ev=>setLine(t.id,i,{activity:ev.target.value})}>
                     <option value="">Tevékenységtípus…</option>
                     {ACTIVITIES.map(a=><option key={a} value={a}>{a}</option>)}
                   </select>
                   <div className="chips">
                     {DURS.map(d=>(
-                      <button key={d} className={"chip"+(e.min===d?" sel":"")} onClick={()=>upd(t.id,{min:d})}>{fmt(d)}</button>
+                      <button key={d} className={"chip"+(l.min===d?" sel":"")} onClick={()=>setLine(t.id,i,{min:d})}>{fmt(d)}</button>
                     ))}
                     <input className="cmin" type="number" min="0" step="5" placeholder="egyéni p"
-                      value={e.min && !DURS.includes(e.min)? e.min : ""}
-                      onChange={ev=>upd(t.id,{min:Number(ev.target.value)||0})}/>
+                      value={l.min && !DURS.includes(l.min)? l.min : ""}
+                      onChange={ev=>setLine(t.id,i,{min:Number(ev.target.value)||0})}/>
                   </div>
+                  {e.lines.length>1 && <button className="lx" title="Sor törlése" onClick={()=>removeLine(t.id,i)}>✕</button>}
                 </div>
-              )}
+              ))}
+              {e.on && <button className="addline" onClick={()=>addLine(t.id)}>+ tevékenység</button>}
             </div>
           </div>
         );
