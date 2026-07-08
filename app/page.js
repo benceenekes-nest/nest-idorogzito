@@ -7,19 +7,21 @@ const DURS=[15,30,45,60,90,120];
 const FINISHED=["done","complete","kész","closed","cancelled","törölve"];
 function fmt(m){ if(!m) return "0 p"; const h=Math.floor(m/60),r=m%60; return (h?h+" ó ":"")+(r?r+" p":(h?"":"0 p")); }
 const emptyLine=()=>({activity:"",min:0});
-// helyi (nem UTC) naptári nap YYYY-MM-DD formában
 function localISO(d){ const z=new Date(d.getTime()-d.getTimezoneOffset()*60000); return z.toISOString().slice(0,10); }
 // Felvihető tartomány: ma + előző munkanap. Hétfőn visszamegy péntekig (a köztes szo/vas is választható).
 function dayBounds(){
-  const today=new Date(); const day=today.getDay(); // 0=vas .. 6=szo
+  const today=new Date(); const day=today.getDay();
   const back = day===1 ? 3 : (day===0 ? 2 : 1);
   const minD=new Date(today); minD.setDate(today.getDate()-back);
   return { min:localISO(minD), max:localISO(today) };
 }
+function isFinished(t){ return FINISHED.includes((t.status||"").toLowerCase()); }
 
 export default function Home(){
   const { data:session, status } = useSession();
   const bounds = useMemo(dayBounds, []);
+  // "kész" feladatok küszöbe: elmúlt 1 hónap
+  const doneCutoff = useMemo(()=>{ const d=new Date(); d.setDate(d.getDate()-30); return localISO(d); },[]);
   const [date,setDate]=useState(bounds.max);
   const [tasks,setTasks]=useState([]);
   const [me,setMe]=useState(null);
@@ -27,6 +29,12 @@ export default function Home(){
   const [msg,setMsg]=useState(null);
   const [loading,setLoading]=useState(false);
   const [showDone,setShowDone]=useState(false);
+
+  function recentlyDone(t){
+    const ms=Number(t.dateDone||t.dateClosed||0);
+    if(!ms) return false;
+    return localISO(new Date(ms)) >= doneCutoff;
+  }
 
   function pickDate(v){
     if(v<bounds.min) v=bounds.min;
@@ -72,15 +80,18 @@ export default function Home(){
   }
 
   const grouped = useMemo(()=>{
-    let list = tasks.filter(t=> showDone ? true : !FINISHED.includes((t.status||"").toLowerCase()));
+    let list = tasks.filter(t=>{
+      if(!isFinished(t)) return true;            // nyitott feladat / altaszk: mindig
+      return showDone && recentlyDone(t);        // kész: csak kinyitva és ha 1 hónapon belül zárták
+    });
     return list.slice().sort((a,b)=>{
       if(a.client!==b.client) return a.client.localeCompare(b.client,"hu");
       return (a.name||"").localeCompare(b.name||"","hu");
     });
-  },[tasks,showDone]);
+  },[tasks,showDone,doneCutoff]);
 
   const total = useMemo(()=> Object.values(ent).reduce((a,e)=> a+(e.on? e.lines.reduce((s,l)=>s+(l.min||0),0):0),0),[ent]);
-  const doneCount = tasks.filter(t=>FINISHED.includes((t.status||"").toLowerCase())).length;
+  const doneCount = tasks.filter(t=> isFinished(t) && recentlyDone(t)).length;
 
   async function submit(){
     const rows=[];
@@ -175,7 +186,7 @@ export default function Home(){
 
       {doneCount>0 && (
         <button className="btn sec" style={{marginTop:6}} onClick={()=>setShowDone(s=>!s)}>
-          {showDone? "Kész feladatok elrejtése" : `Kész feladatok mutatása (${doneCount})`}
+          {showDone? "Kész feladatok elrejtése" : `Kész feladatok (elmúlt 1 hónap) mutatása (${doneCount})`}
         </button>
       )}
 
