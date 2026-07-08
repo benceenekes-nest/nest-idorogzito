@@ -58,3 +58,14 @@ table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line)}
 th{font-size:11px;text-transform:uppercase;color:var(--mut);letter-spacing:.03em}
 td.n,th.n{text-align:right}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:14px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:0 1px 2px rgba(27,57,93,.04)}
+.kpival{font-size:22px;font-weight:800;color:var(--navy);line-height:1.1}
+.kpilabel{font-size:12px;color:var(--mut);margin-top:3px}
+.bars{display:flex;flex-direction:column;gap:8px}
+.barrow{display:grid;grid-template-columns:180px 1fr 84px;align-items:center;gap:10px}
+.barlabel{font-size:12.5px;font-weight:600;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bartrack{background:var(--beige-soft);border-radius:6px;height:14px;overflow:hidden}
+.barfill{height:100%;background:var(--navy);border-radius:6px}
+.barval{font-size:12.5px;font-weight:700;color:var(--navy);text-align:right;white-space:nowrap}
+@media(max-width:560px){.barrow{grid-template-columns:110px 1fr 64px}}
