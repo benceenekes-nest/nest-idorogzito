@@ -7,16 +7,32 @@ const DURS=[15,30,45,60,90,120];
 const FINISHED=["done","complete","kész","closed","cancelled","törölve"];
 function fmt(m){ if(!m) return "0 p"; const h=Math.floor(m/60),r=m%60; return (h?h+" ó ":"")+(r?r+" p":(h?"":"0 p")); }
 const emptyLine=()=>({activity:"",min:0});
+// helyi (nem UTC) naptári nap YYYY-MM-DD formában
+function localISO(d){ const z=new Date(d.getTime()-d.getTimezoneOffset()*60000); return z.toISOString().slice(0,10); }
+// Felvihető tartomány: ma + előző munkanap. Hétfőn visszamegy péntekig (a köztes szo/vas is választható).
+function dayBounds(){
+  const today=new Date(); const day=today.getDay(); // 0=vas .. 6=szo
+  const back = day===1 ? 3 : (day===0 ? 2 : 1);
+  const minD=new Date(today); minD.setDate(today.getDate()-back);
+  return { min:localISO(minD), max:localISO(today) };
+}
 
 export default function Home(){
   const { data:session, status } = useSession();
-  const [date,setDate]=useState(new Date().toISOString().slice(0,10));
+  const bounds = useMemo(dayBounds, []);
+  const [date,setDate]=useState(bounds.max);
   const [tasks,setTasks]=useState([]);
   const [me,setMe]=useState(null);
   const [ent,setEnt]=useState({});
   const [msg,setMsg]=useState(null);
   const [loading,setLoading]=useState(false);
   const [showDone,setShowDone]=useState(false);
+
+  function pickDate(v){
+    if(v<bounds.min) v=bounds.min;
+    if(v>bounds.max) v=bounds.max;
+    setDate(v);
+  }
 
   async function load(d=date){
     setLoading(true); setMsg(null); setEnt({}); setTasks([]);
@@ -105,9 +121,10 @@ export default function Home(){
       <div className="card">
         <div className="row1">
           <div className="fld"><label>Nap</label>
-            <input type="date" value={date} onChange={e=>setDate(e.target.value)}/></div>
+            <input type="date" min={bounds.min} max={bounds.max} value={date}
+              onChange={e=>pickDate(e.target.value)}/></div>
           <button className="btn" onClick={()=>load()} disabled={loading}>{loading?"Betöltés…":"Feladatok behívása"}</button>
-          <span className="muted" style={{fontSize:12}}>Csak azt pipáld, amin aznap dolgoztál. Egy feladathoz több tevékenység is felvihető.</span>
+          <span className="muted" style={{fontSize:12}}>Csak a mai és az előző munkanap vihető fel. Egy feladathoz több tevékenység is felvihető.</span>
         </div>
       </div>
 
