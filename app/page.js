@@ -70,7 +70,11 @@ export default function Home(){
   return (
     <div className="wrap">
       <div className="top">
-        <div><h1>Napi időrögzítő</h1><div className="who">{me?.name} · {me?.email}</div></div>
+        <div className="brand">
+          <img src="/nest-logo.svg" alt="NEST" />
+          <span className="divider"></span>
+          <div><h1>Napi időrögzítő</h1><div className="who">{me?.name} · {me?.email}</div></div>
+        </div>
         <div style={{display:"flex",gap:10,alignItems:"center"}}>
           <a href="/report">Kimutatás</a>
           <button className="btn sec" onClick={()=>signOut({callbackUrl:"/login"})}>Kilépés</button>
