@@ -42,8 +42,7 @@ export default function Home(){
   const [loc,setLoc]=useState("");        // "iroda" | "home"
   const [partial,setPartial]=useState(false);
   const [missingH,setMissingH]=useState("");   // kieső óra
-  const [lateR,setLateR]=useState("");
-  const [earlyR,setEarlyR]=useState("");
+  const [reason,setReason]=useState("");
   const [msg,setMsg]=useState(null);
   const [loading,setLoading]=useState(false);
   const [showDone,setShowDone]=useState(false);
@@ -62,7 +61,7 @@ export default function Home(){
 
   async function load(d=date){
     setLoading(true); setMsg(null); setEnt({}); setTasks([]); setLoc("");
-    setPartial(false); setMissingH(""); setLateR(""); setEarlyR("");
+    setPartial(false); setMissingH(""); setReason("");
     try{
       const r = await fetch(`/api/tasks?date=${d}`);
       const data = await r.json();
@@ -72,7 +71,7 @@ export default function Home(){
       const m=data.meta||null;
       setLoc(m?.location||"");
       if(m?.partial){ setPartial(true); setMissingH(String((m.missingMinutes||0)/60));
-        setLateR(m.lateReason||""); setEarlyR(m.earlyReason||""); }
+        setReason(m.reason||""); }
       const e={};
       (data.prefill||[]).forEach(p=>{
         const id=p.task_id;
@@ -129,13 +128,13 @@ export default function Home(){
     if(partial){
       if(!(missingMinutes>0)){ setMsg({type:"err",text:"Add meg, hány óra esett ki aznap."}); return; }
       if(missingMinutes >= dailyHours(date)*60){ setMsg({type:"err",text:"A kieső idő nem lehet több az aznapi munkaidőnél. Egész napos távollétet a Szabadság menüpontban jelölj."}); return; }
-      if(!lateR.trim() && !earlyR.trim()){ setMsg({type:"err",text:"Írd le, miért nem volt teljes a munkanap."}); return; }
+      if(!reason.trim()){ setMsg({type:"err",text:"Írd le, miért nem volt teljes a munkanap."}); return; }
     }
     setLoading(true); setMsg(null);
     try{
       const r = await fetch("/api/time",{ method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({ date, rows, location: loc, partial,
-          missingMinutes, lateReason: lateR.trim(), earlyReason: earlyR.trim() }) });
+          missingMinutes, reason: reason.trim() }) });
       const d = await r.json();
       if(!r.ok) throw new Error(d.error||"Mentési hiba");
       setMsg({type:"ok",text:`Mentve: ${d.saved} tétel, összesen ${fmt(total)} — ${date} (${loc==="iroda"?"iroda":"home office"})`
@@ -194,17 +193,13 @@ export default function Home(){
               </div>
             </div>
             <div className="fld" style={{marginTop:8}}>
-              <label>Később érkeztem, mert…</label>
-              <input type="text" className="reason" value={lateR} maxLength={300}
-                onChange={e=>setLateR(e.target.value)} placeholder="pl. orvosi vizsgálat, engedéllyel"/>
-            </div>
-            <div className="fld" style={{marginTop:8}}>
-              <label>Hamarabb távoztam, mert…</label>
-              <input type="text" className="reason" value={earlyR} maxLength={300}
-                onChange={e=>setEarlyR(e.target.value)} placeholder="pl. gyerek betegsége miatt elkéredzkedtem"/>
+              <label>Indoklás</label>
+              <input type="text" className="reason" value={reason} maxLength={300}
+                onChange={e=>setReason(e.target.value)}
+                placeholder="pl. orvosi vizsgálat napközben, engedéllyel"/>
             </div>
             <div className="muted" style={{fontSize:11.5,marginTop:8}}>
-              Elég az egyiket kitölteni. A kieső idő levonódik az aznapi elvárt munkaidőből, így a kihasználtságod nem romlik el miatta.
+              A kieső idő levonódik az aznapi elvárt munkaidőből, így a kihasználtságod nem romlik el miatta. Mindegy, hogy a nap melyik részében esett ki.
             </div>
           </div>
         )}
