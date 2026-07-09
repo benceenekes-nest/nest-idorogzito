@@ -94,3 +94,7 @@ td.n,th.n{text-align:right}
 .legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;font-size:12.5px;color:var(--mut);align-items:center}
 .legend i.sw{display:inline-block;width:12px;height:12px;border-radius:4px;margin-right:5px;vertical-align:-2px}
 .sw.szabadsag{background:#1b395d}.sw.beteg{background:#b3261e}.sw.wkl{background:#faf8f2;border:1px solid var(--line)}
+.cday.pending{outline:2px dashed var(--navy);outline-offset:-2px;opacity:.85}
+.cday.locked{cursor:not-allowed}
+.cday .lock{position:absolute;top:-1px;right:0;font-size:8px;font-weight:400;line-height:1}
+.sw.pend{background:#fff;border:2px dashed var(--navy)}
