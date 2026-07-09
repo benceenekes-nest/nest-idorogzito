@@ -126,6 +126,7 @@ export default function Home(){
           <div><h1>Napi időrögzítő</h1><div className="who">{me?.name} · {me?.email}</div></div>
         </div>
         <div style={{display:"flex",gap:10,alignItems:"center"}}>
+          <a href="/szabadsag">Szabadság</a>
           <a href="/report">Kimutatás</a>
           <button className="btn sec" onClick={()=>signOut({callbackUrl:"/login"})}>Kilépés</button>
         </div>

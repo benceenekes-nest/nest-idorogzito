@@ -75,3 +75,22 @@ td.n,th.n{text-align:right}
 .matrix th,.matrix td{white-space:nowrap;padding:6px 10px}
 .matrix tbody tr:hover{background:var(--beige-soft)}
 @media print{ .noprint{display:none!important} body{background:#fff} .card{box-shadow:none;break-inside:avoid} }
+/* ── Szabadságnaptár ── */
+.cal{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+.calm{padding:12px;margin:0}
+.calmh{font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--navy);border-bottom:2px solid var(--beige);padding-bottom:5px;margin-bottom:8px}
+.calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.cdow{font-size:10px;font-weight:700;color:var(--mut);text-align:center;padding-bottom:2px}
+.cday{position:relative;aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;border-radius:7px;cursor:pointer;border:1px solid transparent;color:var(--navy)}
+.cday:hover{border-color:var(--navy)}
+.cday.wk{color:#a8a394;background:#faf8f2}
+.cday.today{box-shadow:0 0 0 2px var(--beige) inset;font-weight:800}
+.cday.szabadsag{background:#1b395d;color:#fff}
+.cday.beteg{background:#b3261e;color:#fff}
+.cday.teamon{background:var(--beige-soft);cursor:default}
+.tinit{position:absolute;bottom:1px;left:0;right:0;display:flex;justify-content:center;gap:1px}
+.dot{font-style:normal;font-size:7px;font-weight:800;line-height:1;padding:1px 2px;border-radius:3px;color:#fff}
+.dot.szabadsag{background:#1b395d}.dot.beteg{background:#b3261e}.dot.more{background:#6b7280}
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;font-size:12.5px;color:var(--mut);align-items:center}
+.legend i.sw{display:inline-block;width:12px;height:12px;border-radius:4px;margin-right:5px;vertical-align:-2px}
+.sw.szabadsag{background:#1b395d}.sw.beteg{background:#b3261e}.sw.wkl{background:#faf8f2;border:1px solid var(--line)}
