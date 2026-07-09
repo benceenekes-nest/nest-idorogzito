@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../../lib/auth";
 import { resolveUserByEmail } from "../../../lib/clickup";
-import { saveDay } from "../../../lib/db";
+import { saveDay, saveLocation } from "../../../lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -25,5 +25,10 @@ export async function POST(req){
                minutes: Math.round(Number(r.minutes)) }));
 
   const saved = await saveDay({ email, name, clickupId: me?.id||null, date, rows: clean });
-  return Response.json({ ok:true, saved });
+
+  // napi munkavégzés helye
+  const loc = (body.location==="iroda"||body.location==="home") ? body.location : null;
+  if(loc) await saveLocation({ email, date, location: loc });
+
+  return Response.json({ ok:true, saved, location: loc });
 }
