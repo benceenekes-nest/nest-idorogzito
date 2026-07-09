@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../../lib/auth";
 import { getRange, getWorkDaysRange, getLeaves } from "../../../lib/db";
-import { getAllOpenTasks, getMembers } from "../../../lib/clickup";
+import { getAllOpenTasks, getMembers, listSpaces } from "../../../lib/clickup";
 import { clientOf } from "../../../lib/clients";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +24,10 @@ export async function GET(req){
 
   const me = session.user.email.toLowerCase();   // a saját sorait kihagyjuk a listákból
   const url = new URL(req.url);
+  if(url.searchParams.get("spaces")==="1"){
+    const sp = await listSpaces().catch(e=>({ error:String(e.message||e) }));
+    return Response.json({ spaces: sp });
+  }
   const t = todayISO();
   const from = url.searchParams.get("from") || (t.slice(0,8)+"01");
   const to   = url.searchParams.get("to")   || t;
