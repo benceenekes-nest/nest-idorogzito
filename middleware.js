@@ -18,8 +18,8 @@ export async function middleware(req){
 
   if(isMgmt){
     if(pathname === "/" || pathname === "/vezetoi"){
-      if(!token) return NextResponse.next();          // a lap maga kínálja a belépést
-      if(!token.isManager) return new NextResponse("Ehhez vezetői jogosultság kell.", { status:403 });
+      // Belépés nélkül is a vezetői lap jön be — az kínálja a Google-belépést.
+      if(token && !token.isManager) return new NextResponse("Ehhez vezetői jogosultság kell.", { status:403 });
       if(pathname === "/") return NextResponse.rewrite(new URL("/vezetoi", req.url));
       return NextResponse.next();
     }
