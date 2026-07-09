@@ -112,6 +112,7 @@ export default function Report(){
           <div><h1>Kimutatás</h1><div className="who">{isManager? "Összesített (vezetői) nézet":"Saját idő"}</div></div>
         </div>
         <a className="noprint" href="/">← Rögzítő</a>
+        <a className="noprint" href="/szabadsag">Szabadság</a>
       </div>
 
       <div className="card noprint">
