@@ -28,6 +28,8 @@ function dayBounds(){
   return { min:localISO(minD), max:localISO(today) };
 }
 function isFinished(t){ return FINISHED.includes((t.status||"").toLowerCase()); }
+// Elvárt munkaidő: hétfő–csütörtök 8 óra, péntek 7 óra.
+function dailyHours(dateISO){ const w=new Date(dateISO+"T00:00:00").getDay(); return w===5?7:8; }
 
 export default function Home(){
   const { data:session, status } = useSession();
@@ -38,6 +40,10 @@ export default function Home(){
   const [me,setMe]=useState(null);
   const [ent,setEnt]=useState({});
   const [loc,setLoc]=useState("");        // "iroda" | "home"
+  const [partial,setPartial]=useState(false);
+  const [missingH,setMissingH]=useState("");   // kieső óra
+  const [lateR,setLateR]=useState("");
+  const [earlyR,setEarlyR]=useState("");
   const [msg,setMsg]=useState(null);
   const [loading,setLoading]=useState(false);
   const [showDone,setShowDone]=useState(false);
@@ -56,13 +62,17 @@ export default function Home(){
 
   async function load(d=date){
     setLoading(true); setMsg(null); setEnt({}); setTasks([]); setLoc("");
+    setPartial(false); setMissingH(""); setLateR(""); setEarlyR("");
     try{
       const r = await fetch(`/api/tasks?date=${d}`);
       const data = await r.json();
       if(!r.ok) throw new Error(data.error||"Betöltési hiba");
       setMe(data.me);
       setTasks(data.tasks||[]);
-      setLoc(data.location||"");
+      const m=data.meta||null;
+      setLoc(m?.location||"");
+      if(m?.partial){ setPartial(true); setMissingH(String((m.missingMinutes||0)/60));
+        setLateR(m.lateReason||""); setEarlyR(m.earlyReason||""); }
       const e={};
       (data.prefill||[]).forEach(p=>{
         const id=p.task_id;
@@ -115,13 +125,21 @@ export default function Home(){
     });
     if(!rows.length){ setMsg({type:"err",text:"Pipálj be legalább egy feladatot és adj meg időt."}); return; }
     if(!loc){ setMsg({type:"err",text:"Jelöld be, hogy aznap irodában vagy home office-ban dolgoztál."}); return; }
+    const missingMinutes = partial ? Math.round(Number(String(missingH).replace(",","."))*60) : 0;
+    if(partial){
+      if(!(missingMinutes>0)){ setMsg({type:"err",text:"Add meg, hány óra esett ki aznap."}); return; }
+      if(missingMinutes >= dailyHours(date)*60){ setMsg({type:"err",text:"A kieső idő nem lehet több az aznapi munkaidőnél. Egész napos távollétet a Szabadság menüpontban jelölj."}); return; }
+      if(!lateR.trim() && !earlyR.trim()){ setMsg({type:"err",text:"Írd le, miért nem volt teljes a munkanap."}); return; }
+    }
     setLoading(true); setMsg(null);
     try{
       const r = await fetch("/api/time",{ method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ date, rows, location: loc }) });
+        body: JSON.stringify({ date, rows, location: loc, partial,
+          missingMinutes, lateReason: lateR.trim(), earlyReason: earlyR.trim() }) });
       const d = await r.json();
       if(!r.ok) throw new Error(d.error||"Mentési hiba");
-      setMsg({type:"ok",text:`Mentve: ${d.saved} tétel, összesen ${fmt(total)} — ${date} (${loc==="iroda"?"iroda":"home office"}).`});
+      setMsg({type:"ok",text:`Mentve: ${d.saved} tétel, összesen ${fmt(total)} — ${date} (${loc==="iroda"?"iroda":"home office"})`
+        + (partial? `, nem teljes munkanap: ${fmt(missingMinutes)} kiesés.` : ".")});
     }catch(e){ setMsg({type:"err",text:e.message}); }
     finally{ setLoading(false); }
   }
@@ -155,8 +173,42 @@ export default function Home(){
               <button className={"chip"+(loc==="home"?" sel":"")} onClick={()=>setLoc("home")}>🏠 Home office</button>
             </div>
           </div>
+          <div className="fld"><label>Munkanap</label>
+            <div className="chips">
+              <button className={"chip"+(partial?" sel":"")} onClick={()=>setPartial(p=>!p)}>⏳ Nem teljes munkanap</button>
+            </div>
+          </div>
           <button className="btn" onClick={()=>load()} disabled={loading}>{loading?"Betöltés…":"Feladatok behívása"}</button>
         </div>
+
+        {partial && (
+          <div className="partial">
+            <div className="row1" style={{alignItems:"flex-end"}}>
+              <div className="fld"><label>Kieső idő (óra)</label>
+                <input className="cmin" type="number" min="0.5" step="0.5" max={dailyHours(date)-0.5}
+                  value={missingH} onChange={e=>setMissingH(e.target.value)} placeholder="pl. 2"/>
+              </div>
+              <div className="muted" style={{fontSize:12,paddingBottom:8}}>
+                Aznapi teljes munkaidő: <b>{dailyHours(date)} óra</b>{new Date(date+"T00:00:00").getDay()===5?" (péntek)":""} ·
+                elvárt: <b>{Math.max(dailyHours(date)-(Number(String(missingH).replace(",","."))||0),0)} óra</b>
+              </div>
+            </div>
+            <div className="fld" style={{marginTop:8}}>
+              <label>Később érkeztem, mert…</label>
+              <input type="text" className="reason" value={lateR} maxLength={300}
+                onChange={e=>setLateR(e.target.value)} placeholder="pl. orvosi vizsgálat, engedéllyel"/>
+            </div>
+            <div className="fld" style={{marginTop:8}}>
+              <label>Hamarabb távoztam, mert…</label>
+              <input type="text" className="reason" value={earlyR} maxLength={300}
+                onChange={e=>setEarlyR(e.target.value)} placeholder="pl. gyerek betegsége miatt elkéredzkedtem"/>
+            </div>
+            <div className="muted" style={{fontSize:11.5,marginTop:8}}>
+              Elég az egyiket kitölteni. A kieső idő levonódik az aznapi elvárt munkaidőből, így a kihasználtságod nem romlik el miatta.
+            </div>
+          </div>
+        )}
+
         <div className="muted" style={{fontSize:12,marginTop:8}}>Csak a mai és az előző munkanap vihető fel. Egy feladathoz több tevékenység is felvihető.</div>
       </div>
 
@@ -219,7 +271,8 @@ export default function Home(){
 
       {tasks.length>0 && (
         <div className="foot">
-          <div className="total">Napi összesen: <span>{fmt(total)}</span>{loc?<span className="muted" style={{fontWeight:600,fontSize:12.5,marginLeft:8}}>· {loc==="iroda"?"🏢 iroda":"🏠 home office"}</span>:null}</div>
+          <div className="total">Napi összesen: <span>{fmt(total)}</span>{loc?<span className="muted" style={{fontWeight:600,fontSize:12.5,marginLeft:8}}>· {loc==="iroda"?"🏢 iroda":"🏠 home office"}</span>:null}
+            {partial?<span className="muted" style={{fontWeight:600,fontSize:12.5,marginLeft:8}}>· ⏳ nem teljes nap</span>:null}</div>
           <button className="btn" onClick={submit} disabled={loading}>Mentés</button>
         </div>
       )}
