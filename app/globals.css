@@ -98,3 +98,4 @@ td.n,th.n{text-align:right}
 .cday.locked{cursor:not-allowed}
 .cday .lock{position:absolute;top:-1px;right:0;font-size:8px;font-weight:400;line-height:1}
 .sw.pend{background:#fff;border:2px dashed var(--navy)}
+.pill.tag{border:1px solid var(--line);background:#fff;color:var(--navy);font-weight:700}

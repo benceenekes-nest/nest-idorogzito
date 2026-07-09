@@ -165,6 +165,12 @@ export default function Home(){
                     <a href={t.url} target="_blank" rel="noopener">{t.name}</a>
                     <span className="pill">{t.status}</span>
                     {t.parentId && <span className="pill">↳ altaszk</span>}
+                    {(t.tags||[]).map(tag=>(
+                      <span key={tag.name} className="pill tag"
+                        style={tag.bg?{background:tag.bg, color:tag.fg||"#fff", borderColor:tag.bg}:undefined}>
+                        {tag.name}
+                      </span>
+                    ))}
                   </div>
                   {t.parentName && <div className="sub">Szülő: {t.parentName}</div>}
                 </div>
