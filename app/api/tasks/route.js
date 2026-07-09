@@ -20,7 +20,7 @@ export async function GET(req){
   const nameById = {}; raw.forEach(t=>{ nameById[t.id]=t.name; });
   const tasks = raw.map(t=>({
     id:t.id, name:t.name, url:t.url, status:t.status,
-    dateDone:t.dateDone, dateClosed:t.dateClosed,
+    dateDone:t.dateDone, dateClosed:t.dateClosed, tags:t.tags||[],
     client: clientOf(t),
     parentId: t.parent || null,
     parentName: t.parent ? (nameById[t.parent]||null) : null
