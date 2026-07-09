@@ -87,6 +87,7 @@ export default function Vezetoi(){
           <div className="kpi"><div className="kpival">{fmt(Object.values(d.byClient).reduce((a,b)=>a+b,0))}</div><div className="kpilabel">Rögzített idő</div></div>
           <div className="kpi"><div className="kpival">{avgPct(d.people)}</div><div className="kpilabel">Átlagos kihasználtság</div></div>
           <div className="kpi"><div className="kpival">{d.ops.overdue.length}</div><div className="kpilabel">Lejárt határidő</div></div>
+          <div className="kpi"><div className="kpival">{d.ops.due24.length}</div><div className="kpilabel">1 napon belül lejár</div></div>
           <div className="kpi"><div className="kpival">{d.absence.onLeaveToday.length}</div><div className="kpilabel">Ma távol</div></div>
         </div>
 
@@ -144,7 +145,7 @@ export default function Vezetoi(){
         {tab==="ugyfel" && !c && (
           <div className="card">
             <div className="grp" style={{marginTop:0}}>Ügyfél-jelzőlámpa és ráfordított idő</div>
-            <table><thead><tr><th>Ügyfél</th><th></th><th className="n">Idő</th><th className="n">Nyitott</th><th className="n">Lejárt</th><th className="n">7 napon belül</th></tr></thead>
+            <table><thead><tr><th>Ügyfél</th><th></th><th className="n">Idő</th><th className="n">Nyitott</th><th className="n">Lejárt</th><th className="n">1 napon belül</th><th className="n">7 napon belül</th></tr></thead>
               <tbody>{d.clients.map(x=>(
                 <tr key={x.name} className="clickrow" onClick={()=>setClient(x.name)}>
                   <td><a>{x.name}</a></td>
@@ -152,10 +153,11 @@ export default function Vezetoi(){
                   <td className="n">{x.minutes?fmt(x.minutes):"–"}</td>
                   <td className="n">{x.open}</td>
                   <td className="n">{x.overdue||"–"}</td>
+                  <td className="n">{x.due24||"–"}</td>
                   <td className="n">{x.soon||"–"}</td>
                 </tr>))}
               </tbody></table>
-            <div className="note">Piros: van lejárt határidő. Sárga: 7 napon belüli határidő. Zöld: rendben. Az idő a saját időrögzítőből, a határidők a ClickUp-ból.</div>
+            <div className="note">Piros: van lejárt vagy 24 órán belül lejáró határidő. Sárga: 7 napon belüli határidő. Zöld: rendben. Az idő a saját időrögzítőből, a határidők a ClickUp-ból.</div>
           </div>
         )}
 
@@ -167,6 +169,7 @@ export default function Vezetoi(){
               <div className="kpi"><div className="kpival">{c.minutes?fmt(c.minutes):"–"}</div><div className="kpilabel">Ráfordított idő</div></div>
               <div className="kpi"><div className="kpival">{c.open}</div><div className="kpilabel">Nyitott feladat</div></div>
               <div className="kpi danger"><div className="kpival">{c.overdue}</div><div className="kpilabel">Lejárt határidő</div></div>
+              <div className="kpi danger"><div className="kpival">{c.due24}</div><div className="kpilabel">1 napon belül</div></div>
               <div className="kpi"><div className="kpival">{c.soon}</div><div className="kpilabel">7 napon belül</div></div>
             </div>
             <div className="grp">Idő tevékenységtípusonként</div>
@@ -178,7 +181,12 @@ export default function Vezetoi(){
 
         {tab==="operacio" && (
           <>
-            <div className="two">
+            <div className="card">
+              <div className="grp" style={{marginTop:0}}>1 napon belül lejár ({d.ops.due24.length})</div>
+              <TaskTable rows={d.ops.due24}/>
+              <div className="note">Ma vagy a következő 24 órában lejáró, nyitott feladatok.</div>
+            </div>
+            <div className="two" style={{marginTop:12}}>
               <div className="card">
                 <div className="grp" style={{marginTop:0}}>Leterheltség — határidős feladat / fő</div>
                 <Bars rows={d.ops.loadByUser.slice(0,12)} fmtv={v=>v+" db"}/>
