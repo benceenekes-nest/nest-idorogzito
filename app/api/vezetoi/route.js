@@ -112,23 +112,25 @@ export async function GET(req){
     .sort((a,b)=>a.date.localeCompare(b.date));
 
   // ---- ClickUp
-  const now = Date.now(), in7 = now+7*864e5, in14 = now+14*864e5;
+  const now = Date.now(), in1 = now+864e5, in7 = now+7*864e5, in14 = now+14*864e5;
   const withDue = tasks.filter(x=>x.dueDate);
   const overdue = withDue.filter(x=>x.dueDate < startOfToday());
   const upcoming14 = withDue.filter(x=>x.dueDate >= startOfToday() && x.dueDate <= in14);
+  const due24 = withDue.filter(x=>x.dueDate >= startOfToday() && x.dueDate <= in1);
   const slim = x=>({ id:x.id, name:x.name, url:x.url, status:x.status, dueDate:x.dueDate,
     priority:x.priority, client:clientOf(x), assignees:x.assignees.map(a=>a.name) });
 
   const loadByUser={}; [...overdue,...upcoming14].forEach(x=>x.assignees.forEach(a=>{ loadByUser[a.name]=(loadByUser[a.name]||0)+1; }));
 
   const clientMap={};
-  const touch=c=>(clientMap[c] ||= { open:0, overdue:0, soon:0, minutes:0 });
+  const touch=c=>(clientMap[c] ||= { open:0, overdue:0, due24:0, soon:0, minutes:0 });
   tasks.forEach(x=>{ const c=clientOf(x); touch(c).open++; });
   overdue.forEach(x=>{ touch(clientOf(x)).overdue++; });
+  due24.forEach(x=>{ touch(clientOf(x)).due24++; });
   upcoming14.forEach(x=>{ if(x.dueDate<=in7) touch(clientOf(x)).soon++; });
   Object.entries(byClient).forEach(([c,m])=>{ touch(c).minutes=m; });
   const clients = Object.entries(clientMap).map(([name,v])=>({
-    name, ...v, level: v.overdue? 2 : (v.soon? 1 : 0),
+    name, ...v, level: (v.overdue||v.due24)? 2 : (v.soon? 1 : 0),
     activities: byClientActivity[name]||{}
   })).sort((a,b)=>b.level-a.level || b.overdue-a.overdue || b.minutes-a.minutes || a.name.localeCompare(b.name,"hu"));
 
@@ -140,6 +142,7 @@ export async function GET(req){
     clients,
     ops:{
       overdue: overdue.sort((a,b)=>a.dueDate-b.dueDate).map(slim),
+      due24: due24.sort((a,b)=>a.dueDate-b.dueDate).map(slim),
       upcoming: upcoming14.sort((a,b)=>a.dueDate-b.dueDate).map(slim),
       loadByUser: Object.entries(loadByUser).sort((a,b)=>b[1]-a[1]),
       totalOpen: tasks.length, teamSize: members.length
