@@ -22,18 +22,26 @@ export async function GET(req){
   if(!session?.user?.email) return Response.json({ error:"Nincs belépve" }, { status:401 });
   if(!session.user.isManager) return Response.json({ error:"Ehhez vezetői jogosultság kell." }, { status:403 });
 
+  const me = session.user.email.toLowerCase();   // a saját sorait kihagyjuk a listákból
   const url = new URL(req.url);
   const t = todayISO();
   const from = url.searchParams.get("from") || (t.slice(0,8)+"01");
   const to   = url.searchParams.get("to")   || t;
 
-  const [entries, workDays, leaves, tasks, members] = await Promise.all([
+  const [entries, workDays, leaves, allTasks, members] = await Promise.all([
     getRange({ email:"", from, to, all:true }),
     getWorkDaysRange({ email:"", from, to, all:true }),
     getLeaves({ email:"", from, to:addDays(t,30), all:true }),
     getAllOpenTasks().catch(()=>[]),
     getMembers().catch(()=>[])
   ]);
+
+  // Csak a saját magához rendelt feladatok kimaradnak; a közös feladatok maradnak.
+  const tasks = allTasks.filter(x=>{
+    const a = x.assignees||[];
+    if(!a.length) return true;
+    return !a.every(u=>u.email===me);
+  });
 
   // ---- nevek
   const nameOf = {};
@@ -42,14 +50,15 @@ export async function GET(req){
   members.forEach(m=>{ if(m.email && !nameOf[m.email]) nameOf[m.email]=m.name; });
 
   // ---- idő
+  const teamEntries = entries.filter(r=>r.user_email!==me);
   const sum=(arr,key)=>{ const m={}; arr.forEach(r=>{ const k=key(r)||"—"; m[k]=(m[k]||0)+Number(r.minutes||0); }); return m; };
-  const byUser = sum(entries, r=>r.user_email);
-  const byClient = sum(entries, r=>r.client);
-  const byActivity = sum(entries, r=>r.activity);
+  const byUser = sum(teamEntries, r=>r.user_email);
+  const byClient = sum(teamEntries, r=>r.client);
+  const byActivity = sum(teamEntries, r=>r.activity);
   const byUserClient = {};
   const byClientActivity = {};
   const byWeek = {};
-  entries.forEach(r=>{
+  teamEntries.forEach(r=>{
     const u=r.user_email, c=r.client||"—", a=r.activity||"—", m=Number(r.minutes||0);
     (byUserClient[u] ||= {}); byUserClient[u][c]=(byUserClient[u][c]||0)+m;
     (byClientActivity[c] ||= {}); byClientActivity[c][a]=(byClientActivity[c][a]||0)+m;
@@ -57,25 +66,31 @@ export async function GET(req){
   });
 
   // ---- távollét
-  const leaveInRange = leaves.filter(r=>{ const ds=d2s(r.leave_date); return ds>=from && ds<=to && dailyMin(ds)>0; });
+  const teamLeaves = leaves.filter(r=>r.user_email!==me);
+  const leaveInRange = teamLeaves.filter(r=>{ const ds=d2s(r.leave_date); return ds>=from && ds<=to && dailyMin(ds)>0; });
   const leaveMin={}, leaveDays={}, sickDays={};
   leaveInRange.forEach(r=>{ const ds=d2s(r.leave_date);
     leaveMin[r.user_email]=(leaveMin[r.user_email]||0)+dailyMin(ds);
     if(r.kind==="beteg") sickDays[r.user_email]=(sickDays[r.user_email]||0)+1;
     else leaveDays[r.user_email]=(leaveDays[r.user_email]||0)+1; });
 
-  const partialDays = workDays.filter(r=>r.partial && Number(r.missing_minutes)>0).map(r=>({
+  const teamWorkDays = workDays.filter(r=>r.user_email!==me);
+  const partialDays = teamWorkDays.filter(r=>r.partial && Number(r.missing_minutes)>0).map(r=>({
     email:r.user_email, name:nameOf[r.user_email]||r.user_email, date:d2s(r.work_date),
     missingMin:Number(r.missing_minutes)||0, reason:r.reason||""
   })).sort((a,b)=>a.date.localeCompare(b.date));
   const missingMin={}; partialDays.forEach(p=>{ missingMin[p.email]=(missingMin[p.email]||0)+p.missingMin; });
 
   const loc={iroda:0,home:0}; const locByUser={};
-  workDays.forEach(r=>{ if(loc[r.location]!==undefined) loc[r.location]++;
+  teamWorkDays.forEach(r=>{ if(loc[r.location]!==undefined) loc[r.location]++;
     (locByUser[r.user_email] ||= {iroda:0,home:0}); if(locByUser[r.user_email][r.location]!==undefined) locByUser[r.user_email][r.location]++; });
 
   const baseCap = capacityMin(from,to);
-  const people = Object.keys({...byUser, ...leaveMin, ...missingMin}).map(email=>{
+  const roster = new Set([
+    ...members.map(m=>m.email).filter(e=>e && e!==me),
+    ...Object.keys(byUser), ...Object.keys(leaveMin), ...Object.keys(missingMin)
+  ].filter(e=>e && e!==me));
+  const people = [...roster].map(email=>{
     const logged = byUser[email]||0;
     const cap = Math.max(baseCap - (leaveMin[email]||0) - (missingMin[email]||0), 0);
     return { email, name:nameOf[email]||email, loggedMin:logged, capacityMin:cap,
@@ -86,9 +101,9 @@ export async function GET(req){
       pct: cap>0 ? Math.round(logged/cap*1000)/10 : null };
   }).sort((a,b)=>b.loggedMin-a.loggedMin);
 
-  const onLeaveToday = leaves.filter(r=>d2s(r.leave_date)===t)
+  const onLeaveToday = teamLeaves.filter(r=>d2s(r.leave_date)===t)
     .map(r=>({ email:r.user_email, name:nameOf[r.user_email]||r.user_email, kind:r.kind }));
-  const leaveUpcoming = leaves.filter(r=>{ const ds=d2s(r.leave_date); return ds>t && ds<=addDays(t,30); })
+  const leaveUpcoming = teamLeaves.filter(r=>{ const ds=d2s(r.leave_date); return ds>t && ds<=addDays(t,30); })
     .map(r=>({ date:d2s(r.leave_date), email:r.user_email, name:nameOf[r.user_email]||r.user_email, kind:r.kind }))
     .sort((a,b)=>a.date.localeCompare(b.date));
 
