@@ -7,6 +7,18 @@ const DURS=[15,30,45,60,90,120];
 const FINISHED=["done","complete","kész","closed","cancelled","törölve"];
 function fmt(m){ if(!m) return "0 p"; const h=Math.floor(m/60),r=m%60; return (h?h+" ó ":"")+(r?r+" p":(h?"":"0 p")); }
 const emptyLine=()=>({activity:"",min:0});
+// Olvasható betűszín a ClickUp címke háttérszínéhez (relatív luminancia).
+function readable(bg){
+  const m=String(bg||"").trim();
+  let r,g,b;
+  const h=m.replace("#","");
+  if(/^[0-9a-f]{6}$/i.test(h)){ r=parseInt(h.slice(0,2),16); g=parseInt(h.slice(2,4),16); b=parseInt(h.slice(4,6),16); }
+  else { const p=m.match(/(\d+)[,\s]+(\d+)[,\s]+(\d+)/); if(!p) return "#fff"; [r,g,b]=[+p[1],+p[2],+p[3]]; }
+  const lin=v=>{ v/=255; return v<=0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055,2.4); };
+  const L=0.2126*lin(r)+0.7152*lin(g)+0.0722*lin(b);
+  return L>0.45 ? "#12283f" : "#ffffff";
+}
+
 function localISO(d){ const z=new Date(d.getTime()-d.getTimezoneOffset()*60000); return z.toISOString().slice(0,10); }
 // Felvihető tartomány: ma + előző munkanap. Hétfőn visszamegy péntekig (a köztes szo/vas is választható).
 function dayBounds(){
@@ -167,7 +179,7 @@ export default function Home(){
                     {t.parentId && <span className="pill">↳ altaszk</span>}
                     {(t.tags||[]).map(tag=>(
                       <span key={tag.name} className="pill tag"
-                        style={tag.bg?{background:tag.bg, color:tag.fg||"#fff", borderColor:tag.bg}:undefined}>
+                        style={tag.bg?{background:tag.bg, color:readable(tag.bg), borderColor:tag.bg}:undefined}>
                         {tag.name}
                       </span>
                     ))}
