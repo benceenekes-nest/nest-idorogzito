@@ -101,3 +101,11 @@ td.n,th.n{text-align:right}
 .pill.tag{border:1px solid var(--line);background:#fff;color:var(--navy);font-weight:700}
 .partial{margin-top:12px;padding:12px 14px;border:1px dashed var(--navy);border-radius:12px;background:var(--beige-soft)}
 .reason{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:13.5px;width:100%;max-width:520px;background:#fff;color:var(--ink)}
+.wrap.wide{max-width:1180px}
+.clickrow{cursor:pointer}
+.clickrow:hover{background:var(--beige-soft)}
+.clickrow a{color:var(--navy);text-decoration:underline}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%}
+.dot.g{background:#1f9c74}.dot.y{background:#e0a800}.dot.r{background:#b3261e}
+.pill.w{background:#fef3e2;color:#b45309}
+.pill.d{background:#fdecea;color:#b3261e}
