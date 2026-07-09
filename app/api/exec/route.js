@@ -47,7 +47,7 @@ export async function GET(req){
 
   const { rows: te } = await sql`SELECT user_email, user_name, work_date, client, activity, minutes
     FROM time_entries WHERE work_date BETWEEN ${from} AND ${to}`;
-  const { rows: wd } = await sql`SELECT user_email, work_date, location, partial, missing_minutes, late_reason, early_reason
+  const { rows: wd } = await sql`SELECT user_email, work_date, location, partial, missing_minutes, reason
     FROM work_days WHERE work_date BETWEEN ${from} AND ${to}`;
   const { rows: lv } = await sql`SELECT user_email, user_name, leave_date, kind
     FROM leave_days WHERE leave_date BETWEEN ${from} AND ${addDays(t,30)}`;
@@ -77,8 +77,8 @@ export async function GET(req){
   wd.forEach(r=>{ if(!r.partial) return;
     const mm=Number(r.missing_minutes)||0;
     (missingMin[r.user_email] ||= 0); missingMin[r.user_email]+=mm;
-    partialDays.push({ email:r.user_email, date:d2s(r.work_date), missingMin:mm,
-      lateReason:r.late_reason||"", earlyReason:r.early_reason||"" }); });
+    partialDays.push({ email:r.user_email, name:nameOf[r.user_email]||r.user_email,
+      date:d2s(r.work_date), missingMin:mm, reason:r.reason||"" }); });
   partialDays.sort((a,b)=>a.date.localeCompare(b.date));
 
   const wdCount = workdays(from,to);
