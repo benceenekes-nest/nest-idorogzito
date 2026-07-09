@@ -26,16 +26,14 @@ export async function POST(req){
 
   const partial = !!body.partial;
   const missingMinutes = partial ? Math.max(0, Math.min(480, Math.round(Number(body.missingMinutes)||0))) : 0;
-  const lateReason = partial ? String(body.lateReason||"").trim().slice(0,300) : "";
-  const earlyReason = partial ? String(body.earlyReason||"").trim().slice(0,300) : "";
-  if(partial && (!missingMinutes || (!lateReason && !earlyReason))){
+  const reason = partial ? String(body.reason||"").trim().slice(0,300) : "";
+  if(partial && (!missingMinutes || !reason)){
     return Response.json({ error:"Nem teljes munkanapnál add meg a kieső időt és az indokot." }, { status:400 });
   }
 
   let me=null; try{ me = await resolveUserByEmail(email); }catch(e){}
   const saved = await saveDay({ email, name, clickupId: me?.id||null, date, rows: clean });
-  await saveDayMeta({ email, date, location: loc, partial, missingMinutes,
-    lateReason: lateReason||null, earlyReason: earlyReason||null });
+  await saveDayMeta({ email, date, location: loc, partial, missingMinutes, reason: reason||null });
 
   return Response.json({ ok:true, saved, location: loc, partial, missingMinutes });
 }
