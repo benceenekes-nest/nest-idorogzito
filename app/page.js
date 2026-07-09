@@ -20,12 +20,12 @@ function isFinished(t){ return FINISHED.includes((t.status||"").toLowerCase()); 
 export default function Home(){
   const { data:session, status } = useSession();
   const bounds = useMemo(dayBounds, []);
-  // "kész" feladatok küszöbe: elmúlt 1 hónap
   const doneCutoff = useMemo(()=>{ const d=new Date(); d.setDate(d.getDate()-30); return localISO(d); },[]);
   const [date,setDate]=useState(bounds.max);
   const [tasks,setTasks]=useState([]);
   const [me,setMe]=useState(null);
   const [ent,setEnt]=useState({});
+  const [loc,setLoc]=useState("");        // "iroda" | "home"
   const [msg,setMsg]=useState(null);
   const [loading,setLoading]=useState(false);
   const [showDone,setShowDone]=useState(false);
@@ -43,13 +43,14 @@ export default function Home(){
   }
 
   async function load(d=date){
-    setLoading(true); setMsg(null); setEnt({}); setTasks([]);
+    setLoading(true); setMsg(null); setEnt({}); setTasks([]); setLoc("");
     try{
       const r = await fetch(`/api/tasks?date=${d}`);
       const data = await r.json();
       if(!r.ok) throw new Error(data.error||"Betöltési hiba");
       setMe(data.me);
       setTasks(data.tasks||[]);
+      setLoc(data.location||"");
       const e={};
       (data.prefill||[]).forEach(p=>{
         const id=p.task_id;
@@ -81,8 +82,8 @@ export default function Home(){
 
   const grouped = useMemo(()=>{
     let list = tasks.filter(t=>{
-      if(!isFinished(t)) return true;            // nyitott feladat / altaszk: mindig
-      return showDone && recentlyDone(t);        // kész: csak kinyitva és ha 1 hónapon belül zárták
+      if(!isFinished(t)) return true;
+      return showDone && recentlyDone(t);
     });
     return list.slice().sort((a,b)=>{
       if(a.client!==b.client) return a.client.localeCompare(b.client,"hu");
@@ -101,13 +102,14 @@ export default function Home(){
         client:t.client, activity:l.activity, minutes:l.min }); });
     });
     if(!rows.length){ setMsg({type:"err",text:"Pipálj be legalább egy feladatot és adj meg időt."}); return; }
+    if(!loc){ setMsg({type:"err",text:"Jelöld be, hogy aznap irodában vagy home office-ban dolgoztál."}); return; }
     setLoading(true); setMsg(null);
     try{
       const r = await fetch("/api/time",{ method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ date, rows }) });
+        body: JSON.stringify({ date, rows, location: loc }) });
       const d = await r.json();
       if(!r.ok) throw new Error(d.error||"Mentési hiba");
-      setMsg({type:"ok",text:`Mentve: ${d.saved} tétel, összesen ${fmt(total)} — ${date}.`});
+      setMsg({type:"ok",text:`Mentve: ${d.saved} tétel, összesen ${fmt(total)} — ${date} (${loc==="iroda"?"iroda":"home office"}).`});
     }catch(e){ setMsg({type:"err",text:e.message}); }
     finally{ setLoading(false); }
   }
@@ -134,9 +136,15 @@ export default function Home(){
           <div className="fld"><label>Nap</label>
             <input type="date" min={bounds.min} max={bounds.max} value={date}
               onChange={e=>pickDate(e.target.value)}/></div>
+          <div className="fld"><label>Hol dolgoztál?</label>
+            <div className="chips">
+              <button className={"chip"+(loc==="iroda"?" sel":"")} onClick={()=>setLoc("iroda")}>🏢 Iroda</button>
+              <button className={"chip"+(loc==="home"?" sel":"")} onClick={()=>setLoc("home")}>🏠 Home office</button>
+            </div>
+          </div>
           <button className="btn" onClick={()=>load()} disabled={loading}>{loading?"Betöltés…":"Feladatok behívása"}</button>
-          <span className="muted" style={{fontSize:12}}>Csak a mai és az előző munkanap vihető fel. Egy feladathoz több tevékenység is felvihető.</span>
         </div>
+        <div className="muted" style={{fontSize:12,marginTop:8}}>Csak a mai és az előző munkanap vihető fel. Egy feladathoz több tevékenység is felvihető.</div>
       </div>
 
       {msg && <div className={"status "+msg.type}>{msg.text}</div>}
@@ -192,7 +200,7 @@ export default function Home(){
 
       {tasks.length>0 && (
         <div className="foot">
-          <div className="total">Napi összesen: <span>{fmt(total)}</span></div>
+          <div className="total">Napi összesen: <span>{fmt(total)}</span>{loc?<span className="muted" style={{fontWeight:600,fontSize:12.5,marginLeft:8}}>· {loc==="iroda"?"🏢 iroda":"🏠 home office"}</span>:null}</div>
           <button className="btn" onClick={submit} disabled={loading}>Mentés</button>
         </div>
       )}
