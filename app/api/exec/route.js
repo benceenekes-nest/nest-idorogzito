@@ -3,6 +3,15 @@ import { ensureSchema } from "../../../lib/db";
 
 export const dynamic = "force-dynamic";
 
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Headers": "x-exec-key, content-type",
+  "Access-Control-Max-Age": "86400"
+};
+export async function OPTIONS(){ return new Response(null, { status:204, headers: CORS }); }
+const J = (obj, status=200) => Response.json(obj, { status, headers: CORS });
+
 function d2s(v){ return (v instanceof Date ? v : new Date(v)).toISOString().slice(0,10); }
 function todayISO(){ const d=new Date(); const z=new Date(d.getTime()-d.getTimezoneOffset()*60000); return z.toISOString().slice(0,10); }
 function addDays(s,n){ const d=new Date(s+"T00:00:00Z"); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); }
@@ -17,7 +26,7 @@ function workdays(from,to){
 export async function GET(req){
   const key = process.env.EXEC_KEY || "";
   const given = req.headers.get("x-exec-key") || "";
-  if(!key || given !== key) return Response.json({ error:"Hozzáférés megtagadva" }, { status:401 });
+  if(!key || given !== key) return J({ error:"Hozzáférés megtagadva" }, 401);
 
   await ensureSchema();
   const url = new URL(req.url);
@@ -70,7 +79,7 @@ export async function GET(req){
     .map(r=>({ date:d2s(r.leave_date), email:r.user_email, name:nameOf[r.user_email]||r.user_email, kind:r.kind }))
     .sort((a,b)=>a.date.localeCompare(b.date));
 
-  return Response.json({
+  return J({
     range:{ from, to, workdays:wdCount }, today:t,
     users: Object.keys(byUser).map(e=>({ email:e, name:nameOf[e]||e, minutes:byUser[e] })).sort((a,b)=>b.minutes-a.minutes),
     byClient: Object.entries(byClient).sort((a,b)=>b[1]-a[1]),
