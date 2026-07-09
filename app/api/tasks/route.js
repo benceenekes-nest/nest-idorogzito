@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../../lib/auth";
 import { resolveUserByEmail, getTasksForUser } from "../../../lib/clickup";
 import { clientOf } from "../../../lib/clients";
-import { getDay } from "../../../lib/db";
+import { getDay, getLocation } from "../../../lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +25,7 @@ export async function GET(req){
     parentId: t.parent || null,
     parentName: t.parent ? (nameById[t.parent]||null) : null
   }));
-  const prefill = await getDay({ email, date }); // [{task_id,activity,minutes}]
-  return Response.json({ me:{ name:me.name, email:me.email }, date, tasks, prefill });
+  const prefill = await getDay({ email, date });
+  const location = await getLocation({ email, date });
+  return Response.json({ me:{ name:me.name, email:me.email }, date, tasks, prefill, location });
 }
