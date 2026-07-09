@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { getToken } from "next-auth/jwt";
 
-// A menedzsment.nestgroup.hu a vezetői felületet szolgálja ki a gyökéren.
-const MGMT = "menedzsment.";
+// A vezetoi.nestgroup.hu a vezetői felületet szolgálja ki a gyökéren.
+const MGMT_HOSTS = ["vezetoi.", "menedzsment."];
 
 export async function middleware(req){
   const host = (req.headers.get("host")||"").toLowerCase();
   const { pathname } = req.nextUrl;
-  const isMgmt = host.startsWith(MGMT);
+  const isMgmt = MGMT_HOSTS.some(h=>host.startsWith(h));
 
   // NextAuth és statikus fájlok mindig átmennek
   if(pathname.startsWith("/api/auth") || pathname.startsWith("/_next") || pathname==="/nest-logo.svg"){
