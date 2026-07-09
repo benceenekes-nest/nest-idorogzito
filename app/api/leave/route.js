@@ -1,9 +1,13 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../../lib/auth";
-import { setLeave, getLeaves } from "../../../lib/db";
+import { setLeave, getLeaves, getLeaveOne } from "../../../lib/db";
 
 export const dynamic = "force-dynamic";
 const KINDS = ["szabadsag","beteg"];
+function todayISO(){
+  const d=new Date(); const z=new Date(d.getTime()-d.getTimezoneOffset()*60000);
+  return z.toISOString().slice(0,10);
+}
 
 export async function GET(req){
   const session = await getServerSession(authOptions);
@@ -20,19 +24,34 @@ export async function GET(req){
     date: (r.leave_date instanceof Date ? r.leave_date : new Date(r.leave_date)).toISOString().slice(0,10),
     kind: r.kind, email: r.user_email, name: r.user_name || r.user_email
   }));
-  return Response.json({ isManager, team: wantsAll, me:{ email, name: session.user.name||email }, days });
+  return Response.json({ isManager, team: wantsAll, today: todayISO(),
+    me:{ email, name: session.user.name||email }, days });
 }
 
+// Mentés: { changes:[{date, kind|null}] }
+// Zárolás: már mentett napot csak akkor lehet átírni/törölni, ha a nap a jövőben van
+// (vagy ha a belépett felhasználó vezető).
 export async function POST(req){
   const session = await getServerSession(authOptions);
   if(!session?.user?.email) return Response.json({ error:"Nincs belépve" }, { status:401 });
   const email = session.user.email.toLowerCase();
   const name = session.user.name || email;
+  const isManager = !!session.user.isManager;
+  const t = todayISO();
+
   const body = await req.json().catch(()=>({}));
-  const kind = KINDS.includes(body.kind) ? body.kind : null;
-  const dates = Array.isArray(body.dates) ? body.dates : (body.date ? [body.date] : []);
-  const ok = dates.filter(d=>/^\d{4}-\d{2}-\d{2}$/.test(d));
-  if(!ok.length) return Response.json({ error:"Nincs érvényes dátum" }, { status:400 });
-  for(const d of ok) await setLeave({ email, name, date:d, kind });
-  return Response.json({ ok:true, saved: ok.length, kind });
+  const raw = Array.isArray(body.changes) ? body.changes : [];
+  const changes = raw.filter(c=>/^\d{4}-\d{2}-\d{2}$/.test(c?.date||""));
+  if(!changes.length) return Response.json({ error:"Nincs menteni való" }, { status:400 });
+
+  const blocked=[]; let saved=0;
+  for(const c of changes){
+    const kind = KINDS.includes(c.kind) ? c.kind : null;
+    const existing = await getLeaveOne({ email, date:c.date });
+    if(existing && !isManager && c.date <= t){ blocked.push(c.date); continue; }
+    if(existing === kind) continue;
+    await setLeave({ email, name, date:c.date, kind });
+    saved++;
+  }
+  return Response.json({ ok:true, saved, blocked });
 }
