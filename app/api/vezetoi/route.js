@@ -3,6 +3,7 @@ import { authOptions } from "../../../lib/auth";
 import { getRange, getWorkDaysRange, getLeaves } from "../../../lib/db";
 import { getAllOpenTasks, getMembers, listSpaces } from "../../../lib/clickup";
 import { clientOf } from "../../../lib/clients";
+import { isExcluded } from "../../../lib/delegates";
 
 export const dynamic = "force-dynamic";
 
@@ -93,7 +94,7 @@ export async function GET(req){
   const roster = new Set([
     ...members.map(m=>m.email).filter(e=>e && e!==me),
     ...Object.keys(byUser), ...Object.keys(leaveMin), ...Object.keys(missingMin)
-  ].filter(e=>e && e!==me));
+  ].filter(e=>e && e!==me && !isExcluded(e)));
   const people = [...roster].map(email=>{
     const logged = byUser[email]||0;
     const cap = Math.max(baseCap - (leaveMin[email]||0) - (missingMin[email]||0), 0);
@@ -120,7 +121,11 @@ export async function GET(req){
   const slim = x=>({ id:x.id, name:x.name, url:x.url, status:x.status, dueDate:x.dueDate,
     priority:x.priority, client:clientOf(x), assignees:x.assignees.map(a=>a.name) });
 
-  const loadByUser={}; [...overdue,...upcoming14].forEach(x=>x.assignees.forEach(a=>{ loadByUser[a.name]=(loadByUser[a.name]||0)+1; }));
+  const loadByUser={};
+  [...overdue,...upcoming14].forEach(x=>x.assignees.forEach(a=>{
+    if(isExcluded(a.email) || a.email===me) return;
+    loadByUser[a.name]=(loadByUser[a.name]||0)+1;
+  }));
 
   const clientMap={};
   const touch=c=>(clientMap[c] ||= { open:0, overdue:0, due24:0, soon:0, minutes:0 });
