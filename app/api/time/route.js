@@ -2,16 +2,19 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../../lib/auth";
 import { resolveUserByEmail } from "../../../lib/clickup";
 import { saveDay, saveDayMeta } from "../../../lib/db";
+import { canRecordFor } from "../../../lib/delegates";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req){
   const session = await getServerSession(authOptions);
   if(!session?.user?.email) return Response.json({ error:"Nincs belépve" }, { status:401 });
-  const email = session.user.email.toLowerCase();
-  const name = session.user.name || email;
-
+  const actor = session.user.email.toLowerCase();
   const body = await req.json().catch(()=>({}));
+  const email = (body.for || actor).toLowerCase();
+  if(!canRecordFor(actor, email))
+    return Response.json({ error:"Nincs jogosultságod más nevében rögzíteni." }, { status:403 });
+  const name = (email===actor) ? (session.user.name || email) : null;
   const date = body.date;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date||"")) return Response.json({ error:"Hibás dátum" }, { status:400 });
 
@@ -32,8 +35,11 @@ export async function POST(req){
   }
 
   let me=null; try{ me = await resolveUserByEmail(email); }catch(e){}
-  const saved = await saveDay({ email, name, clickupId: me?.id||null, date, rows: clean });
-  await saveDayMeta({ email, date, location: loc, partial, missingMinutes, reason: reason||null });
+  const finalName = name || me?.name || email;
+  const saved = await saveDay({ email, name: finalName, clickupId: me?.id||null, date, rows: clean,
+    enteredBy: (email===actor)? null : actor });
+  await saveDayMeta({ email, date, location: loc, partial, missingMinutes, reason: reason||null,
+    enteredBy: (email===actor)? null : actor });
 
-  return Response.json({ ok:true, saved, location: loc, partial, missingMinutes });
+  return Response.json({ ok:true, saved, location: loc, partial, missingMinutes, forEmail: email });
 }
