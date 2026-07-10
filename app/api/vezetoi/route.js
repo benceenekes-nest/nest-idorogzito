@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../../lib/auth";
 import { getRange, getWorkDaysRange, getLeaves } from "../../../lib/db";
-import { getAllOpenTasks, getMembers, listSpaces } from "../../../lib/clickup";
+import { getAllOpenTasks, getCompletedTasks, getMembers, listSpaces } from "../../../lib/clickup";
 import { clientOf } from "../../../lib/clients";
 import { isExcluded } from "../../../lib/delegates";
 
@@ -32,21 +32,23 @@ export async function GET(req){
   const t = todayISO();
   const from = url.searchParams.get("from") || (t.slice(0,8)+"01");
   const to   = url.searchParams.get("to")   || t;
+  // A kolléga-figyelőhöz kell a lezárás dátumszűrése ms-ben: from 00:00 – to 23:59.
+  const fromMs = new Date(from+"T00:00:00").getTime();
+  const toMs   = new Date(to+"T23:59:59.999").getTime();
 
-  const [entries, workDays, leaves, allTasks, members] = await Promise.all([
+  const [entries, workDays, leaves, allTasks, completedAll, members] = await Promise.all([
     getRange({ email:"", from, to, all:true }),
     getWorkDaysRange({ email:"", from, to, all:true }),
     getLeaves({ email:"", from, to:addDays(t,30), all:true }),
     getAllOpenTasks().catch(()=>[]),
+    getCompletedTasks({ fromMs, toMs }).catch(()=>[]),
     getMembers().catch(()=>[])
   ]);
 
   // Csak a saját magához rendelt feladatok kimaradnak; a közös feladatok maradnak.
-  const tasks = allTasks.filter(x=>{
-    const a = x.assignees||[];
-    if(!a.length) return true;
-    return !a.every(u=>u.email===me);
-  });
+  const onlyMine = a => a.length>0 && a.every(u=>u.email===me);
+  const tasks = allTasks.filter(x=> !onlyMine(x.assignees||[]));
+  const completed = completedAll.filter(x=> !onlyMine(x.assignees||[]));
 
   // ---- nevek
   const nameOf = {};
@@ -139,12 +141,45 @@ export async function GET(req){
     activities: byClientActivity[name]||{}
   })).sort((a,b)=>b.level-a.level || b.overdue-a.overdue || b.minutes-a.minutes || a.name.localeCompare(b.name,"hu"));
 
+  // ---- ClickUp kollégafigyelő: elvégzett + nyitott terhelés + határidő-tartás + átfutás
+  const startToday = startOfToday();
+  const staffMap = {};
+  const S = (id,name,email)=>{ if(!staffMap[id]) staffMap[id]={ id, name, email:email||"", done:0, open:0, overdue:0, dueDone:0, onTime:0, _cyc:[], doneTasks:[] }; return staffMap[id]; };
+  // nyitott terhelés (a már me-only-szűrt nyitott feladatokból)
+  tasks.forEach(x=>x.assignees.forEach(a=>{
+    if(a.email===me || isExcluded(a.email)) return;
+    const s=S(a.id,a.name,a.email); s.open++;
+    if(x.dueDate && x.dueDate < startToday) s.overdue++;
+  }));
+  // elvégzett feladatok az időszakban
+  completed.forEach(x=>x.assignees.forEach(a=>{
+    if(a.email===me || isExcluded(a.email)) return;
+    const s=S(a.id,a.name,a.email); s.done++;
+    if(x.dueDate){ s.dueDone++; if(x.closedAt<=x.dueDate) s.onTime++; }
+    if(x.createdAt && x.closedAt) s._cyc.push((x.closedAt-x.createdAt)/864e5);
+    if(s.doneTasks.length<200) s.doneTasks.push({
+      id:x.id, name:x.name, url:x.url, client:clientOf(x),
+      closedAt:x.closedAt, dueDate:x.dueDate,
+      onTime: x.dueDate!=null ? x.closedAt<=x.dueDate : null
+    });
+  }));
+  const median = arr=>{ if(!arr.length) return null; const s=[...arr].sort((a,b)=>a-b); const n=s.length; return n%2? s[(n-1)/2] : (s[n/2-1]+s[n/2])/2; };
+  const staff = Object.values(staffMap).map(s=>({
+    id:s.id, name:s.name, email:s.email,
+    done:s.done, open:s.open, overdue:s.overdue, dueDone:s.dueDone, onTime:s.onTime,
+    onTimePct: s.dueDone>0 ? Math.round(100*s.onTime/s.dueDone) : null,
+    cycle: median(s._cyc),
+    doneTasks: s.doneTasks.sort((a,b)=>b.closedAt-a.closedAt)
+  })).sort((a,b)=> b.done-a.done || b.open-a.open);
+
   return Response.json({
     range:{ from, to, capacityMin:baseCap }, today:t,
     people, byClient, byActivity, byWeek,
     absence:{ partialDays, onLeaveToday, leaveUpcoming },
     location:{ totals:loc },
     clients,
+    staff,
+    staffMeta:{ completedCount: completed.length, from, to },
     ops:{
       overdue: overdue.sort((a,b)=>a.dueDate-b.dueDate).map(slim),
       due24: due24.sort((a,b)=>a.dueDate-b.dueDate).map(slim),

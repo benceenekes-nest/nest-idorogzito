@@ -30,6 +30,7 @@ export default function Vezetoi(){
   const [tab,setTab]=useState("kapacitas");
   const [person,setPerson]=useState(null);   // email
   const [client,setClient]=useState(null);   // név
+  const [staffPerson,setStaffPerson]=useState(null);   // ClickUp assignee id
 
   async function load(){
     setLoading(true); setErr("");
@@ -45,6 +46,7 @@ export default function Vezetoi(){
 
   const p = useMemo(()=> d && person ? d.people.find(x=>x.email===person) : null, [d,person]);
   const c = useMemo(()=> d && client ? d.clients.find(x=>x.name===client) : null, [d,client]);
+  const sp = useMemo(()=> d && staffPerson ? (d.staff||[]).find(x=>x.id===staffPerson) : null, [d,staffPerson]);
 
   if(status==="loading") return <div className="wrap"><div className="center"><p className="muted">Betöltés…</p></div></div>;
   if(status!=="authenticated") return (
@@ -92,8 +94,8 @@ export default function Vezetoi(){
         </div>
 
         <div className="tabs noprint">
-          {[["kapacitas","Kapacitás"],["ugyfel","Ügyfelek"],["operacio","Operáció"],["tavollet","Távollét"]].map(([k,l])=>(
-            <button key={k} className={"tab"+(tab===k?" on":"")} onClick={()=>{setTab(k);setPerson(null);setClient(null);}}>{l}</button>
+          {[["kapacitas","Kapacitás"],["kollegak","Kollégák"],["ugyfel","Ügyfelek"],["operacio","Operáció"],["tavollet","Távollét"]].map(([k,l])=>(
+            <button key={k} className={"tab"+(tab===k?" on":"")} onClick={()=>{setTab(k);setPerson(null);setClient(null);setStaffPerson(null);}}>{l}</button>
           ))}
         </div>
 
@@ -139,6 +141,68 @@ export default function Vezetoi(){
                   ))}</tbody></table>
               : <div className="muted">Nincs.</div>}
             <div className="note">Iroda: {p.location.iroda} nap · home office: {p.location.home} nap</div>
+          </div>
+        )}
+
+        {tab==="kollegak" && !sp && (
+          <>
+            <div className="two">
+              <div className="card">
+                <div className="grp" style={{marginTop:0}}>Elvégzett feladatok kollégánként ({from} … {to})</div>
+                <Bars rows={(d.staff||[]).filter(s=>s.done>0).map(s=>[s.name,s.done])} fmtv={v=>v+" db"}/>
+                <div className="note">Az időszakban lezárt ClickUp-feladatok. A több felelőssel megosztott feladat mindegyik felelősnél számít.</div>
+              </div>
+              <div className="card">
+                <div className="grp" style={{marginTop:0}}>Nyitott terhelés kollégánként (most)</div>
+                <StackBars rows={(d.staff||[]).filter(s=>s.open>0).sort((a,b)=>b.open-a.open).map(s=>[s.name,s.open-s.overdue,s.overdue])}/>
+                <div className="note"><span className="dot g"></span> határidőn belül · <span className="dot r"></span> lejárt. Minden be nem fejezett, felelőshöz rendelt feladat.</div>
+              </div>
+            </div>
+            <div className="card">
+              <div className="grp" style={{marginTop:0}}>Részletes táblázat</div>
+              <table className="matrix"><thead><tr>
+                <th>Kolléga</th><th className="n">Elvégzett</th><th className="n">Nyitott</th><th className="n">Lejárt</th><th className="n">Határidő-tartás</th><th className="n">Átfutás (nap)</th>
+              </tr></thead>
+              <tbody>{(d.staff||[]).map(s=>(
+                <tr key={s.id} className="clickrow" onClick={()=>setStaffPerson(s.id)}>
+                  <td><a>{s.name}</a></td>
+                  <td className="n">{s.done}</td>
+                  <td className="n">{s.open}</td>
+                  <td className="n">{s.overdue>0? <b style={{color:"#b3261e"}}>{s.overdue}</b> : "–"}</td>
+                  <td className="n">{s.onTimePct==null? <span className="muted">–</span> : <b style={{color:otColor(s.onTimePct)}}>{s.onTimePct}%</b>}</td>
+                  <td className="n">{s.cycle==null? <span className="muted">–</span> : s.cycle.toFixed(1)}</td>
+                </tr>))}
+              </tbody></table>
+              <div className="note">Kattints egy kollégára, hogy lásd, pontosan mit végzett el az időszakban. „Határidő-tartás" = a határidős, elvégzett feladatok közül hány készült el időre. „Átfutás" = létrehozástól lezárásig eltelt napok mediánja.</div>
+            </div>
+          </>
+        )}
+
+        {tab==="kollegak" && sp && (
+          <div className="card">
+            <button className="btn sec noprint" onClick={()=>setStaffPerson(null)}>← Vissza</button>
+            <div className="grp">{sp.name} — {from} … {to}</div>
+            <div className="kpis">
+              <div className="kpi"><div className="kpival">{sp.done}</div><div className="kpilabel">Elvégzett</div></div>
+              <div className="kpi"><div className="kpival">{sp.open}</div><div className="kpilabel">Nyitott</div></div>
+              <div className="kpi danger"><div className="kpival">{sp.overdue}</div><div className="kpilabel">Lejárt határidő</div></div>
+              <div className="kpi"><div className="kpival">{sp.onTimePct==null?"–":sp.onTimePct+"%"}</div><div className="kpilabel">Határidő-tartás</div></div>
+              <div className="kpi"><div className="kpival">{sp.cycle==null?"–":sp.cycle.toFixed(1)}</div><div className="kpilabel">Átfutás (nap)</div></div>
+            </div>
+            <div className="grp">Elvégzett feladatok ({sp.doneTasks.length})</div>
+            {sp.doneTasks.length
+              ? <table><thead><tr><th>Feladat</th><th>Ügyfél</th><th className="n">Lezárva</th><th className="n">Határidő</th></tr></thead>
+                  <tbody>{sp.doneTasks.map(t=>(
+                    <tr key={t.id}>
+                      <td><a href={t.url} target="_blank" rel="noopener">{t.name}</a>
+                        {t.onTime===true && <span className="pill" style={{background:"#e7f3ec",color:"#1f9c74"}}>időre</span>}
+                        {t.onTime===false && <span className="pill d">késve</span>}</td>
+                      <td>{t.client}</td>
+                      <td className="n">{dstr(t.closedAt)}</td>
+                      <td className="n">{t.dueDate?dstr(t.dueDate):"–"}</td>
+                    </tr>))}
+                  </tbody></table>
+              : <div className="muted">Nincs elvégzett feladat ebben az időszakban.</div>}
           </div>
         )}
 
@@ -260,6 +324,21 @@ function TaskTable({ rows }){
       </tr>))}
     </tbody></table>;
 }
+function StackBars({ rows }){
+  if(!rows.length) return <div className="muted">Nincs nyitott feladat.</div>;
+  const max = Math.max(...rows.map(r=>r[1]+r[2]), 1);
+  return <div className="bars">{rows.map(([l,ok,late])=>(
+    <div className="barrow" key={l}>
+      <div className="barlabel" title={l}>{l}</div>
+      <div className="bartrack" style={{display:"flex"}}>
+        <div style={{width:(ok/max*100)+"%",background:"#1b395d",height:"100%"}}/>
+        <div style={{width:(late/max*100)+"%",background:"#b3261e",height:"100%"}}/>
+      </div>
+      <div className="barval">{ok+late} db{late?` · ${late} lejárt`:""}</div>
+    </div>
+  ))}</div>;
+}
+function otColor(p){ if(p==null) return "var(--mut)"; return p>=80?"#1f9c74":p>=50?"#b45309":"#b3261e"; }
 function avgPct(people){
   const v = people.filter(x=>x.pct!=null).map(x=>x.pct);
   if(!v.length) return "–";
