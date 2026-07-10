@@ -43,6 +43,8 @@ export default function Home(){
   const [partial,setPartial]=useState(false);
   const [missingH,setMissingH]=useState("");   // kieső óra
   const [reason,setReason]=useState("");
+  const [delegates,setDelegates]=useState([]);   // akiknek a nevében rögzíthet
+  const [target,setTarget]=useState("");         // kinek rögzítünk (üres = saját)
   const [msg,setMsg]=useState(null);
   const [loading,setLoading]=useState(false);
   const [showDone,setShowDone]=useState(false);
@@ -59,14 +61,16 @@ export default function Home(){
     setDate(v);
   }
 
-  async function load(d=date){
+  async function load(d=date, forEmail=target){
     setLoading(true); setMsg(null); setEnt({}); setTasks([]); setLoc("");
     setPartial(false); setMissingH(""); setReason("");
     try{
-      const r = await fetch(`/api/tasks?date=${d}`);
+      const r = await fetch(`/api/tasks?date=${d}`+(forEmail?`&for=${encodeURIComponent(forEmail)}`:""));
       const data = await r.json();
       if(!r.ok) throw new Error(data.error||"Betöltési hiba");
       setMe(data.me);
+      setDelegates(data.delegates||[]);
+      setTarget(data.target && data.actor && data.target!==data.actor.email ? data.target : "");
       setTasks(data.tasks||[]);
       const m=data.meta||null;
       setLoc(m?.location||"");
@@ -84,6 +88,7 @@ export default function Home(){
     finally{ setLoading(false); }
   }
   useEffect(()=>{ if(status==="authenticated") load(); },[status]);
+  function switchTarget(email){ setTarget(email); load(date, email); }
 
   function get(id){ return ent[id] || {on:false, lines:[emptyLine()]}; }
   function toggle(id, on){
@@ -134,10 +139,11 @@ export default function Home(){
     try{
       const r = await fetch("/api/time",{ method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({ date, rows, location: loc, partial,
-          missingMinutes, reason: reason.trim() }) });
+          missingMinutes, reason: reason.trim(), for: target||undefined }) });
       const d = await r.json();
       if(!r.ok) throw new Error(d.error||"Mentési hiba");
-      setMsg({type:"ok",text:`Mentve: ${d.saved} tétel, összesen ${fmt(total)} — ${date} (${loc==="iroda"?"iroda":"home office"})`
+      setMsg({type:"ok",text:(target? `${me?.name} nevében mentve: ` : "Mentve: ")
+        + `${d.saved} tétel, összesen ${fmt(total)} — ${date} (${loc==="iroda"?"iroda":"home office"})`
         + (partial? `, nem teljes munkanap: ${fmt(missingMinutes)} kiesés.` : ".")});
     }catch(e){ setMsg({type:"err",text:e.message}); }
     finally{ setLoading(false); }
@@ -152,11 +158,13 @@ export default function Home(){
         <div className="brand">
           <img src="/nest-logo.svg" alt="NEST" />
           <span className="divider"></span>
-          <div><h1>Napi időrögzítő</h1><div className="who">{me?.name} · {me?.email}</div></div>
+          <div><h1>Napi időrögzítő</h1>
+            <div className="who">{target? <>Rögzítés <b>{me?.name}</b> nevében</> : <>{me?.name} · {me?.email}</>}</div>
+          </div>
         </div>
         <div style={{display:"flex",gap:10,alignItems:"center"}}>
-          <a href="/szabadsag">Szabadság</a>
-          <a href="/report">Kimutatás</a>
+          {!target && <a href="/szabadsag">Szabadság</a>}
+          {!target && <a href="/report">Kimutatás</a>}
           <button className="btn sec" onClick={()=>signOut({callbackUrl:"/login"})}>Kilépés</button>
         </div>
       </div>
@@ -166,7 +174,18 @@ export default function Home(){
           <div className="fld"><label>Nap</label>
             <input type="date" min={bounds.min} max={bounds.max} value={date}
               onChange={e=>pickDate(e.target.value)}/></div>
-          <div className="fld"><label>Hol dolgoztál?</label>
+          {delegates.length>0 && (
+            <div className="fld"><label>Kinek rögzítesz?</label>
+              <div className="chips">
+                <button className={"chip"+(!target?" sel":"")} onClick={()=>switchTarget("")}>Saját</button>
+                {delegates.map(dg=>(
+                  <button key={dg.email} className={"chip"+(target===dg.email?" sel":"")}
+                    onClick={()=>switchTarget(dg.email)}>{dg.name}</button>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="fld"><label>{target?"Hol dolgozott?":"Hol dolgoztál?"}</label>
             <div className="chips">
               <button className={"chip"+(loc==="iroda"?" sel":"")} onClick={()=>setLoc("iroda")}>🏢 Iroda</button>
               <button className={"chip"+(loc==="home"?" sel":"")} onClick={()=>setLoc("home")}>🏠 Home office</button>
@@ -207,6 +226,9 @@ export default function Home(){
         <div className="muted" style={{fontSize:12,marginTop:8}}>Csak a mai és az előző munkanap vihető fel. Egy feladathoz több tevékenység is felvihető.</div>
       </div>
 
+      {target && <div className="status ok" style={{background:"#fff7e6",borderColor:"#e6c98a",color:"#8a5a00"}}>
+        Most <b>{me?.name}</b> nevében rögzítesz. A mentés az ő nevén jelenik meg, a rendszer eltárolja, hogy te vitted fel.
+      </div>}
       {msg && <div className={"status "+msg.type}>{msg.text}</div>}
 
       {grouped.map(t=>{
