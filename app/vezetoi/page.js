@@ -188,9 +188,10 @@ export default function Vezetoi(){
               <div className="note">Ma vagy a következő 24 órában lejáró, nyitott feladatok.</div>
             </div>
             <div className="two" style={{marginTop:12}}>
-              <LoadChart title={"Leterheltség — lejárt + következő 1 nap"} prefix="d1"
-                tasks={[...d.ops.overdue, ...d.ops.due24]} open={openLoad} setOpen={setOpenLoad}
-                hint={"Lejárt vagy 24 órán belül lejáró feladatok. Kattints egy névre a részletekért. Forrás: ClickUp."}/>
+              <LoadChart title={"Leterheltség — lejárt + következő 1 nap"} prefix="d1" showOverdue
+                tasks={[...d.ops.overdue.map(t=>({...t,_od:true})), ...d.ops.due24.map(t=>({...t,_od:false}))]}
+                open={openLoad} setOpen={setOpenLoad}
+                hint={"A csík piros része a már lejárt, a kék a 24 órán belül lejáró feladat. Kattints egy névre a részletekért. Forrás: ClickUp."}/>
               <LoadChart title={"Leterheltség — 2.–5. nap"} prefix="d25"
                 tasks={d.ops.due2to5} open={openLoad} setOpen={setOpenLoad}
                 hint={"A következő 2–5 napban lejáró feladatok. Kattints egy névre a részletekért."}/>
@@ -245,7 +246,7 @@ export default function Vezetoi(){
   );
 }
 
-function LoadChart({ title, hint, tasks, prefix, open, setOpen }){
+function LoadChart({ title, hint, tasks, prefix, open, setOpen, showOverdue }){
   const byUser={};
   tasks.forEach(t=>(t.assignees.length?t.assignees:["(nincs felelős)"]).forEach(n=>{ (byUser[n] ||= []).push(t); }));
   const rows=Object.entries(byUser).map(([n,list])=>[n,list]).sort((a,b)=>b[1].length-a[1].length);
@@ -255,11 +256,15 @@ function LoadChart({ title, hint, tasks, prefix, open, setOpen }){
     {!rows.length ? <div className="muted">Nincs ilyen feladat.</div> :
       <div className="bars">{rows.map(([name,list])=>{
         const key=prefix+":"+name, isOpen=open===key;
+        const od=list.filter(t=>t._od).length, rest=list.length-od;
         return <div key={name}>
           <div className="barrow clickrow" onClick={()=>setOpen(isOpen?null:key)} style={{cursor:"pointer"}}>
             <div className="barlabel" title={name}>{isOpen?"▾ ":"▸ "}{name}</div>
-            <div className="bartrack"><div className="barfill" style={{width:Math.max(3,list.length/max*100)+"%"}}/></div>
-            <div className="barval">{list.length} db</div>
+            <div className="bartrack" style={{display:"flex"}}>
+              {od>0 && <div style={{width:(od/max*100)+"%",background:"#b3261e",borderRadius:rest>0?"20px 0 0 20px":"20px",height:"100%"}} title={od+" lejárt"}/>}
+              {rest>0 && <div className="barfill" style={{width:(rest/max*100)+"%",borderRadius:od>0?"0 20px 20px 0":"20px"}}/>}
+            </div>
+            <div className="barval">{showOverdue&&od>0 ? <><span style={{color:"#b3261e"}}>{od}</span>+{rest} db</> : list.length+" db"}</div>
           </div>
           {isOpen && <div style={{margin:"4px 0 10px 12px",borderLeft:"2px solid var(--beige)",paddingLeft:12}}>
             <TaskTable rows={list.slice().sort((a,b)=>a.dueDate-b.dueDate)} hideAssignee/>
