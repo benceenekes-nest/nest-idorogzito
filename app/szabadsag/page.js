@@ -17,22 +17,25 @@ export default function Szabadsag(){
   const [year,setYear]=useState(new Date().getFullYear());
   const [mode,setMode]=useState("szabadsag");   // szabadsag | beteg | torles
   const [team,setTeam]=useState(false);
-  const [srv,setSrv]=useState({days:[], isManager:false, me:null, today:""});
+  const [srv,setSrv]=useState({days:[], isManager:false, me:null, today:"", delegates:[], actor:null});
+  const [target,setTarget]=useState("");   // kinek rögzítünk
   const [draft,setDraft]=useState({});          // date -> kind | null (null = törlés)
   const [busy,setBusy]=useState(false);
   const [msg,setMsg]=useState(null);
 
-  async function load(y=year, t=team){
+  async function load(y=year, t=team, forEmail=target){
     setBusy(true); setMsg(null); setDraft({});
     try{
-      const r=await fetch(`/api/leave?from=${y}-01-01&to=${y}-12-31${t?"&all=1":""}`);
+      const r=await fetch(`/api/leave?from=${y}-01-01&to=${y}-12-31${t?"&all=1":""}`+(forEmail?`&for=${encodeURIComponent(forEmail)}`:""));
       const d=await r.json();
       if(!r.ok) throw new Error(d.error||"Betöltési hiba");
       setSrv(d);
+      setTarget(d.actor && d.target!==d.actor.email ? d.target : "");
     }catch(e){ setMsg({type:"err",text:e.message}); }
     finally{ setBusy(false); }
   }
   useEffect(()=>{ if(status==="authenticated") load(); },[status]);
+  function switchTarget(email){ setTarget(email); setDraft({}); load(year, team, email); }
 
   const myEmail = srv.me?.email;
   const today = srv.today || "";
@@ -77,7 +80,7 @@ export default function Szabadsag(){
     setBusy(true); setMsg(null);
     try{
       const r=await fetch("/api/leave",{ method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ changes }) });
+        body: JSON.stringify({ changes, for: target||undefined }) });
       const d=await r.json();
       if(!r.ok) throw new Error(d.error||"Mentési hiba");
       await load(year, team);
@@ -143,6 +146,16 @@ export default function Szabadsag(){
               </div>
             </div>
           )}
+          {(srv.delegates||[]).length>0 && !team && (
+            <div className="fld"><label>Kinek rögzítesz?</label>
+              <div className="chips">
+                <button className={"chip"+(!target?" sel":"")} onClick={()=>switchTarget("")}>Saját</button>
+                {srv.delegates.map(dg=>(
+                  <button key={dg.email} className={"chip"+(target===dg.email?" sel":"")} onClick={()=>switchTarget(dg.email)}>{dg.name}</button>
+                ))}
+              </div>
+            </div>
+          )}
           {srv.isManager && (
             <div className="fld"><label>Nézet</label>
               <div className="chips">
@@ -158,6 +171,9 @@ export default function Szabadsag(){
         </div>
       </div>
 
+      {target && <div className="status ok" style={{background:"#fff7e6",borderColor:"#e6c98a",color:"#8a5a00"}}>
+        Most <b>{srv.targetName}</b> szabadságát rögzíted.
+      </div>}
       {msg && <div className={"status "+msg.type}>{msg.text}</div>}
 
       <div className="kpis">
