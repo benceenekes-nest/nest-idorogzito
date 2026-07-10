@@ -163,7 +163,7 @@ export default function Home(){
           </div>
         </div>
         <div style={{display:"flex",gap:10,alignItems:"center"}}>
-          {!target && <a href="/szabadsag">Szabadság</a>}
+          <a href="/szabadsag">Szabadság</a>
           {!target && <a href="/report">Kimutatás</a>}
           <button className="btn sec" onClick={()=>signOut({callbackUrl:"/login"})}>Kilépés</button>
         </div>
