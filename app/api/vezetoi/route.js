@@ -173,6 +173,9 @@ export async function GET(req){
   return Response.json({
     range:{ from, to, capacityMin:baseCap }, today:t,
     people, byClient, byActivity, byWeek,
+    analytics:{ dueShifts, forecast, nbByStatus, aging:{
+        d1_7:aging.d1_7.length, d8_30:aging.d8_30.length, d30p:aging.d30p.length,
+        d1_7_list:aging.d1_7.slice(0,20), d8_30_list:aging.d8_30.slice(0,20), d30p_list:aging.d30p.slice(0,20) } },
     absence:{ partialDays, onLeaveToday, leaveUpcoming },
     location:{ totals:loc },
     clients,
