@@ -1,6 +1,6 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../../lib/auth";
-import { getRange, getWorkDaysRange, getLeaves } from "../../../lib/db";
+import { getRange, getWorkDaysRange, getLeaves, snapshotDueDates, getDueShifts } from "../../../lib/db";
 import { getAllOpenTasks, getMembers, listSpaces } from "../../../lib/clickup";
 import { clientOf } from "../../../lib/clients";
 import { isExcluded } from "../../../lib/delegates";
@@ -139,6 +139,36 @@ export async function GET(req){
     name, ...v, level: (v.overdue||v.due24)? 2 : (v.soon? 1 : 0),
     activities: byClientActivity[name]||{}
   })).sort((a,b)=>b.level-a.level || b.overdue-a.overdue || b.minutes-a.minutes || a.name.localeCompare(b.name,"hu"));
+
+  // Napi határidő-pillanatkép + csúszásnapló (a nyilvános, nem privát feladatokból)
+  let dueShifts = [];
+  try{
+    await snapshotDueDates(withDue.map(x=>({ id:x.id, name:x.name, assignees:x.assignees.map(a=>a.name), client:clientOf(x), dueDate:x.dueDate })));
+    dueShifts = await getDueShifts({ limit:150 });
+  }catch(e){ /* a pillanatkép ne törje meg a dashboardot */ }
+
+  // Lejárt határidők öregedése
+  const aging = { d1_7:[], d8_30:[], d30p:[] };
+  overdue.forEach(x=>{ const days=Math.floor((startOfToday()-x.dueDate)/864e5);
+    const o=slim(x); o.overdueDays=days;
+    if(days<=7) aging.d1_7.push(o); else if(days<=30) aging.d8_30.push(o); else aging.d30p.push(o); });
+
+  // Kapacitás-előrejelzés: következő 14 nap — kié a szabadság és a határidő
+  const forecast = [];
+  for(let i=0;i<14;i++){
+    const day = addDays(t,i);
+    const dm = dailyMin(day);
+    const onLeave = leaves.filter(r=>d2s(r.leave_date)===day && r.user_email!==me)
+      .map(r=>({ name:nameOf[r.user_email]||r.user_email, kind:r.kind }));
+    const deadlines = upcoming14.filter(x=>d2s(x.dueDate)===day).length;
+    if(onLeave.length || deadlines) forecast.push({ date:day, weekend:dm===0, onLeave, deadlines });
+  }
+
+  // New Business pipeline státusz szerint
+  const newbiz = tasks.filter(x=>/new business|üzletfejleszt/i.test(clientOf(x)) || (x.list && /new business/i.test(x.list.name||"")));
+  const nbByStatus = {};
+  newbiz.forEach(x=>{ const st=x.status||"—"; (nbByStatus[st] ||= []).push({ name:x.name, url:x.url,
+    assignees:(x.assignees||[]).map(a=>a.name).join(", "), due: x.dueDate?d2s(x.dueDate):null }); });
 
   return Response.json({
     range:{ from, to, capacityMin:baseCap }, today:t,
