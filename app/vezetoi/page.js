@@ -93,7 +93,7 @@ export default function Vezetoi(){
         </div>
 
         <div className="tabs noprint">
-          {[["kapacitas","Kapacitás"],["ugyfel","Ügyfelek"],["operacio","Operáció"],["tavollet","Távollét"]].map(([k,l])=>(
+          {[["kapacitas","Kapacitás"],["ugyfel","Ügyfelek"],["operacio","Operáció"],["tavollet","Távollét"],["elemzes","Elemzések"]].map(([k,l])=>(
             <button key={k} className={"tab"+(tab===k?" on":"")} onClick={()=>{setTab(k);setPerson(null);setClient(null);}}>{l}</button>
           ))}
         </div>
@@ -241,9 +241,87 @@ export default function Vezetoi(){
             </div>
           </>
         )}
+
+        {tab==="elemzes" && <Elemzes d={d}/>}
       </>}
     </div>
   );
+}
+
+function Elemzes({ d }){
+  const a = d.analytics || {};
+  const [openShift,setOpenShift]=useState(true);
+  // Heti trend – rögzített összóra hetenként
+  const weeks = Object.entries(d.byWeek||{}).sort((x,y)=>x[0].localeCompare(y[0]))
+    .map(([w,users])=>[w.slice(5), Object.values(users).reduce((s,m)=>s+m,0)]);
+  const ag = a.aging || {d1_7:0,d8_30:0,d30p:0};
+  const agTotal = ag.d1_7+ag.d8_30+ag.d30p;
+  const nb = a.nbByStatus || {};
+  const nbEntries = Object.entries(nb).sort((x,y)=>y[1].length-x[1].length);
+  const shifts = a.dueShifts || [];
+  const fore = a.forecast || [];
+  return <>
+    <div className="two">
+      <div className="card">
+        <div className="grp" style={{marginTop:0}}>Heti rögzített idő (trend)</div>
+        <Bars rows={weeks} max={Math.max(...weeks.map(w=>w[1]),1)}/>
+        <div className="note">A hét első napja szerint, minden kolléga összesen.</div>
+      </div>
+      <div className="card">
+        <div className="grp" style={{marginTop:0}}>Lejárt határidők öregedése ({agTotal})</div>
+        {agTotal ? <div className="bars">
+          {[["1–7 nap",ag.d1_7,"#e6a23c"],["8–30 nap",ag.d8_30,"#d9803a"],["30+ nap",ag.d30p,"#b3261e"]].map(([l,v,col])=>(
+            <div className="barrow" key={l}>
+              <div className="barlabel">{l}</div>
+              <div className="bartrack"><div style={{width:Math.max(3,v/agTotal*100)+"%",background:col,height:"100%",borderRadius:20}}/></div>
+              <div className="barval">{v} db</div>
+            </div>))}
+        </div> : <div className="muted">Nincs lejárt határidő. 🎉</div>}
+        <div className="note">Minél régebbi a lejárat, annál sürgetőbb a beavatkozás.</div>
+      </div>
+    </div>
+
+    <div className="card">
+      <div className="grp clickrow" style={{marginTop:0,cursor:"pointer"}} onClick={()=>setOpenShift(v=>!v)}>
+        {openShift?"▾ ":"▸ "}Eltolt határidők – belső csúszások ({shifts.length})
+      </div>
+      {openShift && (shifts.length
+        ? <table><thead><tr><th>Feladat</th><th>Felelős</th><th>Ügyfél</th><th className="n">Eredeti</th><th className="n">Új</th><th className="n">Eltérés</th><th className="n">Rögzítve</th></tr></thead>
+            <tbody>{shifts.map((s,i)=>(
+              <tr key={i}>
+                <td>{s.name}</td><td>{s.assignees||"—"}</td><td>{s.client||"—"}</td>
+                <td className="n">{s.oldDue?.slice(5)||"—"}</td><td className="n">{s.newDue?.slice(5)||"—"}</td>
+                <td className="n">{s.changedOn?.slice(5)||"—"}</td>
+              </tr>))}</tbody></table>
+        : <div className="muted">Még nincs rögzített csúszás. A rendszer mostantól naponta figyeli a határidők változását – az első eltolások a következő napokban jelennek meg itt.</div>)}
+    </div>
+
+    <div className="two">
+      <div className="card">
+        <div className="grp" style={{marginTop:0}}>Kapacitás-előrejelzés (14 nap)</div>
+        {fore.length ? <table><thead><tr><th>Nap</th><th>Szabadságon</th><th className="n">Határidő</th></tr></thead>
+          <tbody>{fore.map((f,i)=>(
+            <tr key={i}>
+              <td>{f.date.slice(5)}{f.weekend?" (hétvége)":""}</td>
+              <td>{f.onLeave.length?f.onLeave.map(o=>o.name+" ("+KIND[o.kind]+")").join(", "):"—"}</td>
+              <td className="n">{f.deadlines?<b style={{color:f.onLeave.length?"#b3261e":"inherit"}}>{f.deadlines} db</b>:"—"}</td>
+            </tr>))}</tbody></table>
+          : <div className="muted">A következő két hétben nincs bejelentett szabadság és határidő ütközés.</div>}
+        <div className="note">Piros = aznap szabadság ÉS határidő is van – érdemes átütemezni.</div>
+      </div>
+      <div className="card">
+        <div className="grp" style={{marginTop:0}}>New Business pipeline</div>
+        {nbEntries.length ? nbEntries.map(([st,list])=>(
+          <div key={st} style={{marginBottom:10}}>
+            <div className="barrow"><div className="barlabel" style={{fontWeight:600}}>{st}</div>
+              <div className="bartrack"><div className="barfill" style={{width:Math.max(4,list.length/Math.max(...nbEntries.map(e=>e[1].length))*100)+"%"}}/></div>
+              <div className="barval">{list.length} db</div></div>
+          </div>
+        )) : <div className="muted">Nincs new business feladat.</div>}
+        <div className="note">Az „New Business" lista feladatai státusz szerint.</div>
+      </div>
+    </div>
+  </>;
 }
 
 function LoadChart({ title, hint, tasks, prefix, open, setOpen, showOverdue }){
@@ -288,9 +366,16 @@ function TaskTable({ rows, hideAssignee }){
       </tr>))}
     </tbody></table>;
 }
+
 function avgPct(people){
   const v = people.filter(x=>x.pct!=null).map(x=>x.pct);
   if(!v.length) return "–";
   return (Math.round(v.reduce((a,b)=>a+b,0)/v.length*10)/10)+"%";
 }
-function pctColor(p){ if(p==null) return "var(--mut)"; return p>=85?"#1f9c74":p>=50?"#1b395d":"#b45309"; }
+
+function pctColor(pct){
+  if(pct==null) return "var(--beige)";
+  if(pct>=85) return "#3a9d5d";
+  if(pct>=60) return "#e6a23c";
+  return "#b3261e";
+}
