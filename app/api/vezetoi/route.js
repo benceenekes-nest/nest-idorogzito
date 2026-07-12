@@ -1,7 +1,7 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../../lib/auth";
 import { getRange, getWorkDaysRange, getLeaves, snapshotDueDates, getDueShifts } from "../../../lib/db";
-import { getAllOpenTasks, getMembers, listSpaces } from "../../../lib/clickup";
+import { getAllOpenTasks, getMembers, listSpaces, getCompletedTasks } from "../../../lib/clickup";
 import { clientOf } from "../../../lib/clients";
 import { isExcluded } from "../../../lib/delegates";
 
@@ -27,18 +27,42 @@ export async function GET(req){
   const url = new URL(req.url);
   if(url.searchParams.get("spaces")==="1"){
     const sp = await listSpaces().catch(e=>({ error:String(e.message||e) }));
-    return Response.json({ spaces: sp });
+    // ── Elvégzett (lezárt) feladatok: ma / tegnap / szűrt időszak ──
+  const doneDayISO = ms => new Date(Number(ms)).toISOString().slice(0,10);
+  const mine = x => { const a=x.assignees||[]; return a.length && a.every(u=>u.email===me); };
+  const slimDone = x => ({
+    id:x.id, name:x.name, url:x.url, client:clientOf(x),
+    assignees:(x.assignees||[]).map(a=>a.name),
+    dueDate:x.dueDate, doneDate:doneDayISO(x.dateDone), doneMs:x.dateDone,
+    priority:x.priority, tags:x.tags||[]
+  });
+  const doneClean = doneTasks.filter(x=>x.dateDone && !mine(x)).map(slimDone)
+    .sort((a,b)=>b.doneMs-a.doneMs);
+  const seen=new Set(); const doneUniq=[];
+  for(const x of doneClean){ if(seen.has(x.id)) continue; seen.add(x.id); doneUniq.push(x); }
+  const completedToday = doneUniq.filter(x=>x.doneDate===t);
+  const completedYesterday = doneUniq.filter(x=>x.doneDate===yISO);
+  const completedRange = doneUniq.filter(x=>x.doneDate>=from && x.doneDate<=to);
+
+  return Response.json({ spaces: sp });
   }
   const t = todayISO();
   const from = url.searchParams.get("from") || (t.slice(0,8)+"01");
   const to   = url.searchParams.get("to")   || t;
 
-  const [entries, workDays, leaves, allTasks, members] = await Promise.all([
+  const yISO = addDays(t,-1);                          // tegnap
+  const dayMs = iso => Date.parse(iso+"T00:00:00Z");
+  const rangeFromMs = dayMs(from), rangeToMs = dayMs(to)+864e5-1;   // to nap vége
+  const fetchFromMs = Math.min(rangeFromMs, dayMs(yISO));
+  const fetchToMs   = Math.max(rangeToMs, dayMs(t)+864e5-1);
+
+  const [entries, workDays, leaves, allTasks, members, doneTasks] = await Promise.all([
     getRange({ email:"", from, to, all:true }),
     getWorkDaysRange({ email:"", from, to, all:true }),
     getLeaves({ email:"", from, to:addDays(t,30), all:true }),
     getAllOpenTasks().catch(()=>[]),
-    getMembers().catch(()=>[])
+    getMembers().catch(()=>[]),
+    getCompletedTasks({ fromMs:fetchFromMs, toMs:fetchToMs }).catch(()=>[])
   ]);
 
   // Csak a saját magához rendelt feladatok kimaradnak; a közös feladatok maradnak.
@@ -173,6 +197,8 @@ export async function GET(req){
   return Response.json({
     range:{ from, to, capacityMin:baseCap }, today:t,
     people, byClient, byActivity, byWeek,
+    completed:{ today:completedToday, yesterday:completedYesterday, range:completedRange,
+      counts:{ today:completedToday.length, yesterday:completedYesterday.length, range:completedRange.length } },
     analytics:{ dueShifts, forecast, nbByStatus, aging:{
         d1_7:aging.d1_7.length, d8_30:aging.d8_30.length, d30p:aging.d30p.length,
         d1_7_list:aging.d1_7.slice(0,20), d8_30_list:aging.d8_30.slice(0,20), d30p_list:aging.d30p.slice(0,20) } },
