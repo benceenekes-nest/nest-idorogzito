@@ -27,24 +27,7 @@ export async function GET(req){
   const url = new URL(req.url);
   if(url.searchParams.get("spaces")==="1"){
     const sp = await listSpaces().catch(e=>({ error:String(e.message||e) }));
-    // ── Elvégzett (lezárt) feladatok: ma / tegnap / szűrt időszak ──
-  const doneDayISO = ms => new Date(Number(ms)).toISOString().slice(0,10);
-  const mine = x => { const a=x.assignees||[]; return a.length && a.every(u=>u.email===me); };
-  const slimDone = x => ({
-    id:x.id, name:x.name, url:x.url, client:clientOf(x),
-    assignees:(x.assignees||[]).map(a=>a.name),
-    dueDate:x.dueDate, doneDate:doneDayISO(x.dateDone), doneMs:x.dateDone,
-    priority:x.priority, tags:x.tags||[]
-  });
-  const doneClean = doneTasks.filter(x=>x.dateDone && !mine(x)).map(slimDone)
-    .sort((a,b)=>b.doneMs-a.doneMs);
-  const seen=new Set(); const doneUniq=[];
-  for(const x of doneClean){ if(seen.has(x.id)) continue; seen.add(x.id); doneUniq.push(x); }
-  const completedToday = doneUniq.filter(x=>x.doneDate===t);
-  const completedYesterday = doneUniq.filter(x=>x.doneDate===yISO);
-  const completedRange = doneUniq.filter(x=>x.doneDate>=from && x.doneDate<=to);
-
-  return Response.json({ spaces: sp });
+    return Response.json({ spaces: sp });
   }
   const t = todayISO();
   const from = url.searchParams.get("from") || (t.slice(0,8)+"01");
@@ -193,6 +176,23 @@ export async function GET(req){
   const nbByStatus = {};
   newbiz.forEach(x=>{ const st=x.status||"—"; (nbByStatus[st] ||= []).push({ name:x.name, url:x.url,
     assignees:(x.assignees||[]).map(a=>a.name).join(", "), due: x.dueDate?d2s(x.dueDate):null }); });
+
+  // ── Elvégzett (lezárt) feladatok: ma / tegnap / szűrt időszak ──
+  const doneDayISO = ms => new Date(Number(ms)).toISOString().slice(0,10);
+  const mine = x => { const a=x.assignees||[]; return a.length && a.every(u=>u.email===me); };
+  const slimDone = x => ({
+    id:x.id, name:x.name, url:x.url, client:clientOf(x),
+    assignees:(x.assignees||[]).map(a=>a.name),
+    dueDate:x.dueDate, doneDate:doneDayISO(x.dateDone), doneMs:x.dateDone,
+    priority:x.priority, tags:x.tags||[]
+  });
+  const doneClean = doneTasks.filter(x=>x.dateDone && !mine(x)).map(slimDone)
+    .sort((a,b)=>b.doneMs-a.doneMs);
+  const seenDone=new Set(); const doneUniq=[];
+  for(const x of doneClean){ if(seenDone.has(x.id)) continue; seenDone.add(x.id); doneUniq.push(x); }
+  const completedToday = doneUniq.filter(x=>x.doneDate===t);
+  const completedYesterday = doneUniq.filter(x=>x.doneDate===yISO);
+  const completedRange = doneUniq.filter(x=>x.doneDate>=from && x.doneDate<=to);
 
   return Response.json({
     range:{ from, to, capacityMin:baseCap }, today:t,
