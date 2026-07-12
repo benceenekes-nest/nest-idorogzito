@@ -93,7 +93,7 @@ export default function Vezetoi(){
         </div>
 
         <div className="tabs noprint">
-          {[["kapacitas","Kapacitás"],["ugyfel","Ügyfelek"],["operacio","Operáció"],["tavollet","Távollét"],["elemzes","Elemzések"]].map(([k,l])=>(
+          {[["kapacitas","Kapacitás"],["ugyfel","Ügyfelek"],["operacio","Operáció"],["elvegzett","Elvégzettek"],["tavollet","Távollét"],["elemzes","Elemzések"]].map(([k,l])=>(
             <button key={k} className={"tab"+(tab===k?" on":"")} onClick={()=>{setTab(k);setPerson(null);setClient(null);}}>{l}</button>
           ))}
         </div>
@@ -203,6 +203,8 @@ export default function Vezetoi(){
           </>
         )}
 
+        {tab==="elvegzett" && <Elvegzett d={d} from={from} to={to}/>}
+
         {tab==="tavollet" && (
           <>
             <div className="two">
@@ -246,6 +248,47 @@ export default function Vezetoi(){
       </>}
     </div>
   );
+}
+
+function DoneTable({ rows }){
+  if(!rows.length) return <div className="muted">Nincs elvégzett feladat.</div>;
+  return <table><thead><tr><th>Feladat</th><th>Ügyfél</th><th>Felelős</th><th className="n">Elvégezve</th></tr></thead>
+    <tbody>{rows.map(t=>(
+      <tr key={t.id}>
+        <td><a href={t.url} target="_blank" rel="noopener">{t.name}</a>
+          {(t.priority==="urgent"||t.priority==="high") && <span className="pill u">{t.priority}</span>}</td>
+        <td>{t.client}</td>
+        <td>{t.assignees.join(", ")||"—"}</td>
+        <td className="n">{t.doneDate ? t.doneDate.slice(5) : "—"}</td>
+      </tr>))}
+    </tbody></table>;
+}
+
+function Elvegzett({ d, from, to }){
+  const co = (d.completed && d.completed.counts) || { today:0, yesterday:0, range:0 };
+  const c = d.completed || { today:[], yesterday:[], range:[] };
+  const [view,setView]=useState("ma");
+  const rows = view==="ma"? c.today : view==="tegnap"? c.yesterday : c.range;
+  return <>
+    <div className="kpis">
+      <div className="kpi"><div className="kpival">{co.today}</div><div className="kpilabel">Ma elvégzett</div></div>
+      <div className="kpi"><div className="kpival">{co.yesterday}</div><div className="kpilabel">Tegnap elvégzett</div></div>
+      <div className="kpi"><div className="kpival">{co.range}</div><div className="kpilabel">Időszakban ({from.slice(5)}–{to.slice(5)})</div></div>
+    </div>
+    <div className="tabs noprint" style={{marginTop:12}}>
+      {[["ma","Ma elvégzett feladatok"],["tegnap","Tegnap elvégzett feladatok"],["osszes","Összes elvégzett feladat"]].map(([k,l])=>(
+        <button key={k} className={"tab"+(view===k?" on":"")} onClick={()=>setView(k)}>{l}</button>
+      ))}
+    </div>
+    <div className="card">
+      <div className="grp" style={{marginTop:0}}>
+        {view==="ma"?"Ma elvégzett feladatok":view==="tegnap"?"Tegnap elvégzett feladatok":`Összes elvégzett feladat (${from} … ${to})`}
+        {" "}({rows.length})
+      </div>
+      <DoneTable rows={rows}/>
+      {view==="osszes" && <div className="note">A lista a fenti Kezdő/Záró nap szűrőt követi — állítsd be az időszakot, majd nyomj Frissítést.</div>}
+    </div>
+  </>;
 }
 
 function Elemzes({ d }){
