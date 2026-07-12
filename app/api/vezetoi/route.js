@@ -178,20 +178,25 @@ export async function GET(req){
     assignees:(x.assignees||[]).map(a=>a.name).join(", "), due: x.dueDate?d2s(x.dueDate):null }); });
 
   // ── Elvégzett (lezárt) feladatok: ma / tegnap / szűrt időszak ──
-  const doneDayISO = ms => new Date(Number(ms)).toISOString().slice(0,10);
+  // A naphatárok PONTOS budapesti naptár szerint (Europe/Budapest, DST-vel együtt).
+  const budDate = ms => new Intl.DateTimeFormat("en-CA",{ timeZone:"Europe/Budapest",
+    year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date(Number(ms)));
+  const nowMs = Date.now();
+  const tBud = budDate(nowMs);            // ma (Budapest)
+  const yBud = budDate(nowMs - 864e5);    // tegnap (Budapest)
   const mine = x => { const a=x.assignees||[]; return a.length && a.every(u=>u.email===me); };
   const slimDone = x => ({
     id:x.id, name:x.name, url:x.url, client:clientOf(x),
     assignees:(x.assignees||[]).map(a=>a.name),
-    dueDate:x.dueDate, doneDate:doneDayISO(x.dateDone), doneMs:x.dateDone,
+    dueDate:x.dueDate, doneDate:budDate(x.dateDone), doneMs:x.dateDone,
     priority:x.priority, tags:x.tags||[]
   });
   const doneClean = doneTasks.filter(x=>x.dateDone && !mine(x)).map(slimDone)
     .sort((a,b)=>b.doneMs-a.doneMs);
   const seenDone=new Set(); const doneUniq=[];
   for(const x of doneClean){ if(seenDone.has(x.id)) continue; seenDone.add(x.id); doneUniq.push(x); }
-  const completedToday = doneUniq.filter(x=>x.doneDate===t);
-  const completedYesterday = doneUniq.filter(x=>x.doneDate===yISO);
+  const completedToday = doneUniq.filter(x=>x.doneDate===tBud);
+  const completedYesterday = doneUniq.filter(x=>x.doneDate===yBud);
   const completedRange = doneUniq.filter(x=>x.doneDate>=from && x.doneDate<=to);
 
   return Response.json({
