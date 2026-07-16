@@ -128,6 +128,8 @@ export default function Home(){
         client:t.client, activity:l.activity, minutes:l.min }); });
     });
     if(!rows.length){ setMsg({type:"err",text:"Pipálj be legalább egy feladatot és adj meg időt."}); return; }
+    const noAct = rows.filter(r=>!r.activity || !String(r.activity).trim());
+    if(noAct.length){ setMsg({type:"err",text:"Válassz tevékenységtípust minden bejegyzéshez: "+[...new Set(noAct.map(r=>r.taskName))].join(", ")}); return; }
     if(!loc){ setMsg({type:"err",text:"Jelöld be, hogy aznap irodában vagy home office-ban dolgoztál."}); return; }
     const missingMinutes = partial ? Math.round(Number(String(missingH).replace(",","."))*60) : 0;
     if(partial){
@@ -259,7 +261,7 @@ export default function Home(){
               </div>
               {e.on && e.lines.map((l,i)=>(
                 <div className="controls" key={i}>
-                  <select value={l.activity} onChange={ev=>setLine(t.id,i,{activity:ev.target.value})}>
+                  <select value={l.activity} onChange={ev=>setLine(t.id,i,{activity:ev.target.value})} style={(l.min>0 && !l.activity)?{borderColor:"#b3261e",background:"#fff5f5"}:undefined}>
                     <option value="">Tevékenységtípus…</option>
                     {ACTIVITIES.map(a=><option key={a} value={a}>{a}</option>)}
                   </select>
