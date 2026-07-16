@@ -23,6 +23,8 @@ export async function POST(req){
     client:r.client||null, activity:r.activity||null, minutes:Math.round(Number(r.minutes))
   }));
   if(!clean.length) return Response.json({ error:"Nincs menteni való tétel" }, { status:400 });
+  if(clean.some(r=>!r.activity || !String(r.activity).trim()))
+    return Response.json({ error:"Minden tételhez kötelező tevékenységtípust választani." }, { status:400 });
 
   const loc = (body.location==="iroda"||body.location==="home") ? body.location : null;
   if(!loc) return Response.json({ error:"Hiányzik a munkavégzés helye" }, { status:400 });
