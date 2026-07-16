@@ -16,6 +16,23 @@ function capacityMin(from,to){
   for(let d=new Date(a); d<=b; d.setUTCDate(d.getUTCDate()+1)) m+=dailyMin(d.toISOString().slice(0,10));
   return m;
 }
+// Személyre szabott napi ledolgozandó perc (részmunkaidő). Alap: H–Cs 480, P 420.
+const WORK_MIN = {
+  "szandra.kosa@nestcom.hu": 360,    // 6 óra / nap
+  "georgina.szucs@nestcom.hu": 120,  // 2 óra / nap
+};
+function dailyMinFor(email, ds){
+  const w=new Date(ds+"T00:00:00Z").getUTCDay();
+  if(w===0||w===6) return 0;
+  const o = WORK_MIN[(email||"").toLowerCase()];
+  if(o!=null) return o;              // részmunkaidő: minden munkanap ennyi
+  return w===5?420:480;              // teljes munkaidő
+}
+function capacityMinFor(email, from, to){
+  let m=0; const a=new Date(from+"T00:00:00Z"), b=new Date(to+"T00:00:00Z");
+  for(let d=new Date(a); d<=b; d.setUTCDate(d.getUTCDate()+1)) m+=dailyMinFor(email, d.toISOString().slice(0,10));
+  return m;
+}
 function weekStart(ds){ const d=new Date(ds+"T00:00:00Z"); const w=(d.getUTCDay()+6)%7; d.setUTCDate(d.getUTCDate()-w); return d.toISOString().slice(0,10); }
 
 export async function GET(req){
@@ -82,7 +99,7 @@ export async function GET(req){
   const leaveInRange = teamLeaves.filter(r=>{ const ds=d2s(r.leave_date); return ds>=from && ds<=to && dailyMin(ds)>0; });
   const leaveMin={}, leaveDays={}, sickDays={};
   leaveInRange.forEach(r=>{ const ds=d2s(r.leave_date);
-    leaveMin[r.user_email]=(leaveMin[r.user_email]||0)+dailyMin(ds);
+    leaveMin[r.user_email]=(leaveMin[r.user_email]||0)+dailyMinFor(r.user_email, ds);
     if(r.kind==="beteg") sickDays[r.user_email]=(sickDays[r.user_email]||0)+1;
     else leaveDays[r.user_email]=(leaveDays[r.user_email]||0)+1; });
 
@@ -104,7 +121,7 @@ export async function GET(req){
   ].filter(e=>e && e!==me && !isExcluded(e)));
   const people = [...roster].map(email=>{
     const logged = byUser[email]||0;
-    const cap = Math.max(baseCap - (leaveMin[email]||0) - (missingMin[email]||0), 0);
+    const cap = Math.max(capacityMinFor(email,from,to) - (leaveMin[email]||0) - (missingMin[email]||0), 0);
     return { email, name:nameOf[email]||email, loggedMin:logged, capacityMin:cap,
       leaveMin:leaveMin[email]||0, missingMin:missingMin[email]||0,
       leaveDays:leaveDays[email]||0, sickDays:sickDays[email]||0,
