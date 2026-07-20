@@ -49,6 +49,9 @@ export async function GET(req){
   const t = todayISO();
   const from = url.searchParams.get("from") || (t.slice(0,8)+"01");
   const to   = url.searchParams.get("to")   || t;
+  // Az időrögzítő bevezetése — a kapacitás csak innen számol, akármit is mutat a szűrő.
+  const TRACKER_START = "2026-07-13";
+  const effFrom = from < TRACKER_START ? TRACKER_START : from;
 
   const yISO = addDays(t,-1);                          // tegnap
   const dayMs = iso => Date.parse(iso+"T00:00:00Z");
@@ -96,7 +99,7 @@ export async function GET(req){
 
   // ---- távollét
   const teamLeaves = leaves.filter(r=>r.user_email!==me);
-  const leaveInRange = teamLeaves.filter(r=>{ const ds=d2s(r.leave_date); return ds>=from && ds<=to && dailyMin(ds)>0; });
+  const leaveInRange = teamLeaves.filter(r=>{ const ds=d2s(r.leave_date); return ds>=effFrom && ds<=to && dailyMin(ds)>0; });
   const leaveMin={}, leaveDays={}, sickDays={};
   leaveInRange.forEach(r=>{ const ds=d2s(r.leave_date);
     leaveMin[r.user_email]=(leaveMin[r.user_email]||0)+dailyMinFor(r.user_email, ds);
@@ -114,14 +117,14 @@ export async function GET(req){
   teamWorkDays.forEach(r=>{ if(loc[r.location]!==undefined) loc[r.location]++;
     (locByUser[r.user_email] ||= {iroda:0,home:0}); if(locByUser[r.user_email][r.location]!==undefined) locByUser[r.user_email][r.location]++; });
 
-  const baseCap = capacityMin(from,to);
+  const baseCap = capacityMin(effFrom,to);
   const roster = new Set([
     ...members.map(m=>m.email).filter(e=>e && e!==me),
     ...Object.keys(byUser), ...Object.keys(leaveMin), ...Object.keys(missingMin)
   ].filter(e=>e && e!==me && !isExcluded(e)));
   const people = [...roster].map(email=>{
     const logged = byUser[email]||0;
-    const cap = Math.max(capacityMinFor(email,from,to) - (leaveMin[email]||0) - (missingMin[email]||0), 0);
+    const cap = Math.max(capacityMinFor(email,effFrom,to) - (leaveMin[email]||0) - (missingMin[email]||0), 0);
     return { email, name:nameOf[email]||email, loggedMin:logged, capacityMin:cap,
       leaveMin:leaveMin[email]||0, missingMin:missingMin[email]||0,
       leaveDays:leaveDays[email]||0, sickDays:sickDays[email]||0,
