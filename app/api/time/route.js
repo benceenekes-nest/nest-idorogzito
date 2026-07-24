@@ -20,11 +20,14 @@ export async function POST(req){
 
   const clean = (body.rows||[]).filter(r=>r && r.taskId && Number(r.minutes)>0).map(r=>({
     taskId:String(r.taskId), taskName:r.taskName||null, parentId:r.parentId||null, parentName:r.parentName||null,
-    client:r.client||null, activity:r.activity||null, minutes:Math.round(Number(r.minutes))
+    client:r.client||null, activity:r.activity||null, minutes:Math.round(Number(r.minutes)), archived:!!r.archived
   }));
   if(!clean.length) return Response.json({ error:"Nincs menteni való tétel" }, { status:400 });
-  if(clean.some(r=>!r.activity || !String(r.activity).trim()))
+  // Új (aktív) tételhez kötelező a tevékenységtípus; a korábban rögzített, mostanra
+  // lezárt (archív) tételeket viszont nem blokkoljuk, hogy meg tudjanak maradni.
+  if(clean.some(r=>!r.archived && (!r.activity || !String(r.activity).trim())))
     return Response.json({ error:"Minden tételhez kötelező tevékenységtípust választani." }, { status:400 });
+  const shownIds = Array.isArray(body.shownIds) ? body.shownIds.map(String) : null;
 
   const loc = (body.location==="iroda"||body.location==="home") ? body.location : null;
   if(!loc) return Response.json({ error:"Hiányzik a munkavégzés helye" }, { status:400 });
@@ -39,7 +42,7 @@ export async function POST(req){
   let me=null; try{ me = await resolveUserByEmail(email); }catch(e){}
   const finalName = name || me?.name || email;
   const saved = await saveDay({ email, name: finalName, clickupId: me?.id||null, date, rows: clean,
-    enteredBy: (email===actor)? null : actor });
+    enteredBy: (email===actor)? null : actor, shownIds });
   await saveDayMeta({ email, date, location: loc, partial, missingMinutes, reason: reason||null,
     enteredBy: (email===actor)? null : actor });
 
