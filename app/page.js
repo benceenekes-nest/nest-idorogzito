@@ -71,18 +71,29 @@ export default function Home(){
       setMe(data.me);
       setDelegates(data.delegates||[]);
       setTarget(data.target && data.actor && data.target!==data.actor.email ? data.target : "");
-      setTasks(data.tasks||[]);
+      const baseTasks = data.tasks||[];
       const m=data.meta||null;
       setLoc(m?.location||"");
       if(m?.partial){ setPartial(true); setMissingH(String((m.missingMinutes||0)/60));
         setReason(m.reason||""); }
       const e={};
+      const known = new Set(baseTasks.map(t=>t.id));
+      const orphans=[]; const seenOrphan=new Set();
       (data.prefill||[]).forEach(p=>{
         const id=p.task_id;
         if(!e[id]) e[id]={on:true, lines:[]};
         e[id].lines.push({activity:p.activity||"", min:Number(p.minutes)||0});
+        // Korábban rögzített, de az aktuális listában már nem szereplő (pl. lezárt)
+        // feladat: külön "archív" sorként hozzuk vissza, hogy ne vesszen el.
+        if(!known.has(id) && !seenOrphan.has(id)){
+          seenOrphan.add(id);
+          orphans.push({ id, name:p.task_name||"(korábban rögzített feladat)", url:null,
+            status:"lezárt", tags:[], client:p.client||"Korábban rögzített",
+            parentId:p.parent_id||null, parentName:p.parent_name||null, archived:true });
+        }
       });
       Object.values(e).forEach(x=>{ if(!x.lines.length) x.lines=[emptyLine()]; });
+      setTasks([...baseTasks, ...orphans]);
       setEnt(e);
     }catch(e){ setMsg({type:"err",text:e.message}); }
     finally{ setLoading(false); }
@@ -125,10 +136,10 @@ export default function Home(){
     tasks.forEach(t=>{ const e=ent[t.id]; if(!e||!e.on) return;
       e.lines.forEach(l=>{ if((l.min||0)>0) rows.push({
         taskId:t.id, taskName:t.name, parentId:t.parentId, parentName:t.parentName,
-        client:t.client, activity:l.activity, minutes:l.min }); });
+        client:t.client, activity:l.activity, minutes:l.min, archived:!!t.archived }); });
     });
     if(!rows.length){ setMsg({type:"err",text:"Pipálj be legalább egy feladatot és adj meg időt."}); return; }
-    const noAct = rows.filter(r=>!r.activity || !String(r.activity).trim());
+    const noAct = rows.filter(r=>!r.archived && (!r.activity || !String(r.activity).trim()));
     if(noAct.length){ setMsg({type:"err",text:"Válassz tevékenységtípust minden bejegyzéshez: "+[...new Set(noAct.map(r=>r.taskName))].join(", ")}); return; }
     if(!loc){ setMsg({type:"err",text:"Jelöld be, hogy aznap irodában vagy home office-ban dolgoztál."}); return; }
     const missingMinutes = partial ? Math.round(Number(String(missingH).replace(",","."))*60) : 0;
@@ -141,7 +152,8 @@ export default function Home(){
     try{
       const r = await fetch("/api/time",{ method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({ date, rows, location: loc, partial,
-          missingMinutes, reason: reason.trim(), for: target||undefined }) });
+          missingMinutes, reason: reason.trim(), for: target||undefined,
+          shownIds: tasks.map(t=>t.id) }) });
       const d = await r.json();
       if(!r.ok) throw new Error(d.error||"Mentési hiba");
       setMsg({type:"ok",text:(target? `${me?.name} nevében mentve: ` : "Mentve: ")
