@@ -1,4 +1,18 @@
-import { backupAll, dumpAll, dumpTable, DUMP_COLS, diagWorkDate, restoreWorkDate } from "../../../lib/db";
+import { backupAll, dumpAll, dumpTable, DUMP_COLS, diagWorkDate, restoreWorkDate, ingestRows } from "../../../lib/db";
+
+// Visszaállító beszúrás listából (Drive CSV-ből). Kulccsal védett, csak hiányzót ad hozzá.
+export async function POST(req){
+  try{
+    const url = new URL(req.url);
+    const key = process.env.BACKUP_KEY;
+    if(!(key && url.searchParams.get("key")===key)) return Response.json({ error:"Nincs jogosultság" }, { status:401 });
+    const body = await req.json().catch(()=>({}));
+    const res = await ingestRows(body.rows||[]);
+    return Response.json({ ok:true, ...res });
+  }catch(e){
+    return Response.json({ error:String(e.message||e) }, { status:500 });
+  }
+}
 
 export const dynamic = "force-dynamic";
 
