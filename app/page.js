@@ -30,6 +30,8 @@ function dayBounds(){
 function isFinished(t){ return FINISHED.includes((t.status||"").toLowerCase()); }
 // Elvárt munkaidő: hétfő–csütörtök 8 óra, péntek 7 óra.
 function dailyHours(dateISO){ const w=new Date(dateISO+"T00:00:00").getDay(); return w===5?7:8; }
+// Ideiglenes kivétel: adott kollégánál kiterjesztett felvihető tartomány (a hét végén magától lejár).
+const EXTEND_RANGE = { "lilla.kocsis@nestcom.hu": { min:"2026-07-28", until:"2026-08-01" } };
 
 export default function Home(){
   const { data:session, status } = useSession();
@@ -56,8 +58,12 @@ export default function Home(){
     return localISO(new Date(ms)) >= doneCutoff;
   }
 
+  // A felvihető legkorábbi nap – Lillánál (ideiglenesen) kiterjesztve.
+  const ext = me?.email ? EXTEND_RANGE[me.email.toLowerCase()] : null;
+  const minDate = (ext && bounds.max <= ext.until) ? ext.min : bounds.min;
+
   function pickDate(v){
-    if(v<bounds.min) v=bounds.min;
+    if(v<minDate) v=minDate;
     if(v>bounds.max) v=bounds.max;
     setDate(v);
   }
@@ -193,7 +199,7 @@ export default function Home(){
       <div className="card">
         <div className="row1">
           <div className="fld"><label>Nap</label>
-            <input type="date" min={bounds.min} max={bounds.max} value={date}
+            <input type="date" min={minDate} max={bounds.max} value={date}
               onChange={e=>pickDate(e.target.value)}/></div>
           {delegates.length>0 && (
             <div className="fld"><label>Kinek rögzítesz?</label>
