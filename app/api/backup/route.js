@@ -1,4 +1,4 @@
-import { backupAll, dumpAll, dumpTable, DUMP_COLS } from "../../../lib/db";
+import { backupAll, dumpAll, dumpTable, DUMP_COLS, diagWorkDate, restoreWorkDate } from "../../../lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +40,25 @@ export async function GET(req){
         "X-Row-Count": String((rows||[]).length),
         "X-Offset": String(offset), "X-Limit": String(limit)
       }});
+    }
+
+    // Diagnosztika: mi esett ki egy munkanaphoz képest
+    const diag = url.searchParams.get("diag");
+    if(diag){
+      if(!authed) return new Response("Nincs jogosultság", { status:401 });
+      const d = await diagWorkDate(diag);
+      return Response.json({ ok:true, ...d });
+    }
+
+    // Visszaállítás: hiányzó tételek pótlása egy pillanatképből (csak hozzáad)
+    const restore = url.searchParams.get("restore");
+    if(restore){
+      if(!authed) return new Response("Nincs jogosultság", { status:401 });
+      const snap = url.searchParams.get("snap");
+      if(!snap) return new Response("Hiányzik a snap (snapshot dátum)", { status:400 });
+      const user = url.searchParams.get("user") || null;
+      const res = await restoreWorkDate(restore, snap, user);
+      return Response.json({ ok:true, ...res });
     }
 
     const r = await backupAll();
