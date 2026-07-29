@@ -27,7 +27,7 @@ export async function POST(req){
   // lezárt (archív) tételeket viszont nem blokkoljuk, hogy meg tudjanak maradni.
   if(clean.some(r=>!r.archived && (!r.activity || !String(r.activity).trim())))
     return Response.json({ error:"Minden tételhez kötelező tevékenységtípust választani." }, { status:400 });
-  const shownIds = Array.isArray(body.shownIds) ? body.shownIds.map(String) : null;
+  const removedIds = Array.isArray(body.removedIds) ? body.removedIds.map(String) : null;
 
   const loc = (body.location==="iroda"||body.location==="home") ? body.location : null;
   if(!loc) return Response.json({ error:"Hiányzik a munkavégzés helye" }, { status:400 });
@@ -42,7 +42,7 @@ export async function POST(req){
   let me=null; try{ me = await resolveUserByEmail(email); }catch(e){}
   const finalName = name || me?.name || email;
   const saved = await saveDay({ email, name: finalName, clickupId: me?.id||null, date, rows: clean,
-    enteredBy: (email===actor)? null : actor, shownIds });
+    enteredBy: (email===actor)? null : actor, removedIds });
   await saveDayMeta({ email, date, location: loc, partial, missingMinutes, reason: reason||null,
     enteredBy: (email===actor)? null : actor });
 
