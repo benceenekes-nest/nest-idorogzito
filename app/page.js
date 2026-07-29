@@ -48,6 +48,7 @@ export default function Home(){
   const [msg,setMsg]=useState(null);
   const [loading,setLoading]=useState(false);
   const [showDone,setShowDone]=useState(false);
+  const [origIds,setOrigIds]=useState([]);   // amely feladatoknak betöltéskor volt már rögzített adata
 
   function recentlyDone(t){
     const ms=Number(t.dateDone||t.dateClosed||0);
@@ -95,6 +96,7 @@ export default function Home(){
       Object.values(e).forEach(x=>{ if(!x.lines.length) x.lines=[emptyLine()]; });
       setTasks([...baseTasks, ...orphans]);
       setEnt(e);
+      setOrigIds(Object.keys(e));   // ezeknek volt eredetileg adata
     }catch(e){ setMsg({type:"err",text:e.message}); }
     finally{ setLoading(false); }
   }
@@ -148,12 +150,17 @@ export default function Home(){
       if(missingMinutes >= dailyHours(date)*60){ setMsg({type:"err",text:"A kieső idő nem lehet több az aznapi munkaidőnél. Egész napos távollétet a Szabadság menüpontban jelölj."}); return; }
       if(!reason.trim()){ setMsg({type:"err",text:"Írd le, miért nem volt teljes a munkanap."}); return; }
     }
+    // Csak azokat a feladatokat jelezzük törlésre, amelyeknek volt adata, de most
+    // nincs beküldve (a felhasználó levette a pipát / kinullázta). Más feladatot a
+    // szerver nem bánt, így újramentéskor nem tűnhet el korábbi tétel.
+    const submittedIds = new Set(rows.map(r=>r.taskId));
+    const removedIds = origIds.filter(id=>!submittedIds.has(id));
     setLoading(true); setMsg(null);
     try{
       const r = await fetch("/api/time",{ method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({ date, rows, location: loc, partial,
           missingMinutes, reason: reason.trim(), for: target||undefined,
-          shownIds: tasks.map(t=>t.id) }) });
+          removedIds }) });
       const d = await r.json();
       if(!r.ok) throw new Error(d.error||"Mentési hiba");
       setMsg({type:"ok",text:(target? `${me?.name} nevében mentve: ` : "Mentve: ")
