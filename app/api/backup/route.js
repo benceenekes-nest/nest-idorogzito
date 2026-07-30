@@ -1,4 +1,4 @@
-import { backupAll, dumpAll, dumpTable, DUMP_COLS, diagWorkDate, restoreWorkDate, ingestRows } from "../../../lib/db";
+import { backupAll, dumpAll, dumpTable, DUMP_COLS, diagWorkDate, restoreWorkDate, ingestRows, purgeUserDate } from "../../../lib/db";
 
 // Visszaállító beszúrás listából (Drive CSV-ből). Kulccsal védett, csak hiányzót ad hozzá.
 export async function POST(req){
@@ -62,6 +62,16 @@ export async function GET(req){
       if(!authed) return new Response("Nincs jogosultság", { status:401 });
       const d = await diagWorkDate(diag);
       return Response.json({ ok:true, ...d });
+    }
+
+    // Célzott takarítás: egy kolléga adott napi tételeinek törlése
+    const purge = url.searchParams.get("purge");
+    if(purge){
+      if(!authed) return new Response("Nincs jogosultság", { status:401 });
+      const date = url.searchParams.get("date");
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(date||"")) return new Response("Hiányzik/hibás a date", { status:400 });
+      const res = await purgeUserDate(purge, date);
+      return Response.json({ ok:true, ...res });
     }
 
     // Visszaállítás: hiányzó tételek pótlása egy pillanatképből (csak hozzáad)
