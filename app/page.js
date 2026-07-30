@@ -66,6 +66,9 @@ export default function Home(){
     if(v<minDate) v=minDate;
     if(v>bounds.max) v=bounds.max;
     setDate(v);
+    // Dátumváltáskor MINDIG újratöltjük az adott nap adatát, hogy a betöltött
+    // űrlap sose kerülhessen át egy másik napra (duplikáció-védelem).
+    load(v, target);
   }
 
   async function load(d=date, forEmail=target){
