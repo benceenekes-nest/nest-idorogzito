@@ -31,7 +31,7 @@ function isFinished(t){ return FINISHED.includes((t.status||"").toLowerCase()); 
 // Elvárt munkaidő: hétfő–csütörtök 8 óra, péntek 7 óra.
 function dailyHours(dateISO){ const w=new Date(dateISO+"T00:00:00").getDay(); return w===5?7:8; }
 // Ideiglenes kivétel: adott kollégánál kiterjesztett felvihető tartomány (a hét végén magától lejár).
-const EXTEND_RANGE = { "lilla.kocsis@nestcom.hu": { min:"2026-07-28", until:"2026-08-01" } };
+const EXTEND_RANGE = { "lilla.kocsis@nestcom.hu": { min:"2026-07-27", until:"2026-07-31" } };
 
 export default function Home(){
   const { data:session, status } = useSession();
