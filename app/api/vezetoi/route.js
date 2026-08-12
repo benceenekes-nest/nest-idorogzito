@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../../lib/auth";
 import { getRange, getWorkDaysRange, getLeaves, snapshotDueDates, getDueShifts } from "../../../lib/db";
 import { getAllOpenTasks, getMembers, listSpaces, getCompletedTasks } from "../../../lib/clickup";
-import { clientOf } from "../../../lib/clients";
+import { clientOf, normClient } from "../../../lib/clients";
 import { isExcluded } from "../../../lib/delegates";
 
 export const dynamic = "force-dynamic";
@@ -85,13 +85,13 @@ export async function GET(req){
   const teamEntries = entries.filter(r=>r.user_email!==me && !isExcluded(r.user_email));
   const sum=(arr,key)=>{ const m={}; arr.forEach(r=>{ const k=key(r)||"—"; m[k]=(m[k]||0)+Number(r.minutes||0); }); return m; };
   const byUser = sum(teamEntries, r=>r.user_email);
-  const byClient = sum(teamEntries, r=>r.client);
+  const byClient = sum(teamEntries, r=>normClient(r.client));
   const byActivity = sum(teamEntries, r=>r.activity);
   const byUserClient = {};
   const byClientActivity = {};
   const byWeek = {};
   teamEntries.forEach(r=>{
-    const u=r.user_email, c=r.client||"—", a=r.activity||"—", m=Number(r.minutes||0);
+    const u=r.user_email, c=normClient(r.client)||"—", a=r.activity||"—", m=Number(r.minutes||0);
     (byUserClient[u] ||= {}); byUserClient[u][c]=(byUserClient[u][c]||0)+m;
     (byClientActivity[c] ||= {}); byClientActivity[c][a]=(byClientActivity[c][a]||0)+m;
     const w=weekStart(d2s(r.work_date)); (byWeek[w] ||= {}); byWeek[w][u]=(byWeek[w][u]||0)+m;
