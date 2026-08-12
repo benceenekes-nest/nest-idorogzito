@@ -334,6 +334,7 @@ function Elemzes({ d }){
               <tr key={i}>
                 <td>{s.name}</td><td>{s.assignees||"—"}</td><td>{s.client||"—"}</td>
                 <td className="n">{s.oldDue?.slice(5)||"—"}</td><td className="n">{s.newDue?.slice(5)||"—"}</td>
+                <td className="n">{s.dayDiff==null?"—":((s.dayDiff>0?"+":"")+s.dayDiff+" nap")}</td>
                 <td className="n">{s.changedOn?.slice(5)||"—"}</td>
               </tr>))}</tbody></table>
         : <div className="muted">Még nincs rögzített csúszás. A rendszer mostantól naponta figyeli a határidők változását – az első eltolások a következő napokban jelennek meg itt.</div>)}
