@@ -82,7 +82,7 @@ export async function GET(req){
   members.forEach(m=>{ if(m.email && !nameOf[m.email]) nameOf[m.email]=m.name; });
 
   // ---- idő
-  const teamEntries = entries.filter(r=>r.user_email!==me);
+  const teamEntries = entries.filter(r=>r.user_email!==me && !isExcluded(r.user_email));
   const sum=(arr,key)=>{ const m={}; arr.forEach(r=>{ const k=key(r)||"—"; m[k]=(m[k]||0)+Number(r.minutes||0); }); return m; };
   const byUser = sum(teamEntries, r=>r.user_email);
   const byClient = sum(teamEntries, r=>r.client);
@@ -98,7 +98,7 @@ export async function GET(req){
   });
 
   // ---- távollét
-  const teamLeaves = leaves.filter(r=>r.user_email!==me);
+  const teamLeaves = leaves.filter(r=>r.user_email!==me && !isExcluded(r.user_email));
   const leaveInRange = teamLeaves.filter(r=>{ const ds=d2s(r.leave_date); return ds>=effFrom && ds<=to && dailyMin(ds)>0; });
   const leaveMin={}, leaveDays={}, sickDays={};
   leaveInRange.forEach(r=>{ const ds=d2s(r.leave_date);
@@ -106,7 +106,7 @@ export async function GET(req){
     if(r.kind==="beteg") sickDays[r.user_email]=(sickDays[r.user_email]||0)+1;
     else leaveDays[r.user_email]=(leaveDays[r.user_email]||0)+1; });
 
-  const teamWorkDays = workDays.filter(r=>r.user_email!==me);
+  const teamWorkDays = workDays.filter(r=>r.user_email!==me && !isExcluded(r.user_email));
   const partialDays = teamWorkDays.filter(r=>r.partial && Number(r.missing_minutes)>0).map(r=>({
     email:r.user_email, name:nameOf[r.user_email]||r.user_email, date:d2s(r.work_date),
     missingMin:Number(r.missing_minutes)||0, reason:r.reason||""
