@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../../lib/auth";
 import { resolveUserByEmail, getTasksForUser, getMembers } from "../../../lib/clickup";
 import { clientOf } from "../../../lib/clients";
-import { getDay, getDayMeta } from "../../../lib/db";
+import { getDay, getDayMeta, getPiszkozat } from "../../../lib/db";
 import { delegatesOf, canRecordFor } from "../../../lib/delegates";
 
 export const dynamic = "force-dynamic";
@@ -37,11 +37,13 @@ export async function GET(req){
   }));
   const prefill = await getDay({ email: target, date });
   const meta = await getDayMeta({ email: target, date });
+  // A nem mentett piszkozat (ha van) — a kliens akkor használja, ha a böngészőben nincs frissebb.
+  const draft = await getPiszkozat({ email: target, date }).catch(()=>null);
 
   return Response.json({
     me:{ name:me.name, email:me.email },
     actor: { email: actor, name: session.user.name||actor },
     target, delegates,
-    date, tasks, prefill, meta
+    date, tasks, prefill, meta, draft
   });
 }

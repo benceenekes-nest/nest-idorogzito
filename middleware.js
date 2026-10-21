@@ -34,9 +34,14 @@ export async function middleware(req){
     return NextResponse.redirect(new URL("/", req.url));
   }
   // ido.nestgroup.hu — védett útvonalak
-  const guarded = ["/", "/report", "/szabadsag", "/api/tasks", "/api/time", "/api/report", "/api/leave"];
+  const guarded = ["/", "/report", "/szabadsag", "/api/tasks", "/api/time", "/api/draft", "/api/report", "/api/leave"];
   if(guarded.some(p=> pathname===p || pathname.startsWith(p+"/"))){
     if(!token){
+      // Az API-hívás ne a belépőoldal HTML-jét kapja (azt a böngésző érthetetlen hibaként
+      // mutatta), hanem egy olvasható üzenetet — a beírt adat a böngészőben megmarad.
+      if(pathname.startsWith("/api/")){
+        return NextResponse.json({ error:"Lejárt a belépésed. Lépj be újra — a beírt adataid ebben a böngészőben megmaradtak." }, { status:401 });
+      }
       const url = new URL("/login", req.url);
       return NextResponse.redirect(url);
     }

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { ACTIVITIES } from "../lib/clients";
 
@@ -20,6 +20,25 @@ function readable(bg){
 }
 
 function localISO(d){ const z=new Date(d.getTime()-d.getTimezoneOffset()*60000); return z.toISOString().slice(0,10); }
+// ── Piszkozat a böngészőben ──
+// Gépelés közben az űrlap folyamatosan ide is mentődik (naponta és kollégánként külön kulccsal),
+// így ha a mentés elbukik, a lap bezárul vagy újratöltődik, a beírt adat visszajön.
+// Sikeres mentéskor törlődik. A szerveren is van egy másolat (/api/draft).
+const DRAFT_PREFIX="ido-piszkozat|";
+const draftKey=(actor,target,d)=>`${DRAFT_PREFIX}${(actor||"").toLowerCase()}|${(target||actor||"").toLowerCase()}|${d}`;
+function readDraft(k){ try{ const v=localStorage.getItem(k); return v?JSON.parse(v):null; }catch(e){ return null; } }
+function writeDraft(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+function dropDraft(k){ try{ localStorage.removeItem(k); }catch(e){} }
+function pruneDrafts(){
+  try{
+    const hatar=Date.now()-14*86400000;
+    for(let i=localStorage.length-1;i>=0;i--){
+      const k=localStorage.key(i); if(!k||!k.startsWith(DRAFT_PREFIX)) continue;
+      const v=readDraft(k); if(!v||!(v.savedAt>hatar)) dropDraft(k);
+    }
+  }catch(e){}
+}
+function hhmm(ms){ const d=new Date(ms); return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); }
 // Felvihető tartomány: ma + előző munkanap. Hétfőn visszamegy péntekig (a köztes szo/vas is választható).
 function dayBounds(){
   const today=new Date(); const day=today.getDay();
@@ -54,6 +73,13 @@ export default function Home(){
   const [loading,setLoading]=useState(false);
   const [showDone,setShowDone]=useState(false);
   const [origIds,setOrigIds]=useState([]);   // amely feladatoknak betöltéskor volt már rögzített adata
+  // Melyik nap / kinek az adatát mutatja ÉPP az űrlap. Csak ez menthető: ha a dátumválasztó
+  // közben máshol áll (pl. egy késve érkező betöltés miatt), a mentés megáll.
+  const [loaded,setLoaded]=useState(null);   // {date, target, actor, forParam}
+  const [dirty,setDirty]=useState(false);    // van-e nem mentett módosítás
+  const [draftNote,setDraftNote]=useState(null);
+  const seq=useRef(0);
+  const footMsg=useRef(null);
 
   function recentlyDone(t){
     const ms=Number(t.dateDone||t.dateClosed||0);
@@ -68,18 +94,21 @@ export default function Home(){
   function pickDate(v){
     if(v<minDate) v=minDate;
     if(v>bounds.max) v=bounds.max;
+    flushDraft();
     setDate(v);
     // Dátumváltáskor MINDIG újratöltjük az adott nap adatát, hogy a betöltött
     // űrlap sose kerülhessen át egy másik napra (duplikáció-védelem).
     load(v, target);
   }
 
-  async function load(d=date, forEmail=target){
-    setLoading(true); setMsg(null); setEnt({}); setTasks([]); setLoc("");
-    setPartial(false); setMissingH(""); setReason("");
+  async function load(d=date, forEmail=target, opts={}){
+    const my=++seq.current;   // csak a LEGUTÓBB indított betöltés eredménye kerülhet az űrlapra
+    setLoading(true); if(!opts.keepMsg) setMsg(null); setEnt({}); setTasks([]); setLoc("");
+    setPartial(false); setMissingH(""); setReason(""); setLoaded(null); setDirty(false); setDraftNote(null);
     try{
       const r = await fetch(`/api/tasks?date=${d}`+(forEmail?`&for=${encodeURIComponent(forEmail)}`:""));
-      const data = await r.json();
+      const data = await readJson(r);
+      if(my!==seq.current) return;
       if(!r.ok) throw new Error(data.error||"Betöltési hiba");
       setMe(data.me);
       setDelegates(data.delegates||[]);
@@ -106,26 +135,110 @@ export default function Home(){
         }
       });
       Object.values(e).forEach(x=>{ if(!x.lines.length) x.lines=[emptyLine()]; });
-      setTasks([...baseTasks, ...orphans]);
-      setEnt(e);
-      setOrigIds(Object.keys(e));   // ezeknek volt eredetileg adata
-    }catch(e){ setMsg({type:"err",text:e.message}); }
-    finally{ setLoading(false); }
+      setOrigIds(Object.keys(e));   // ezeknek volt eredetileg adata (a törlésjelzés ehhez mér)
+
+      // NEM MENTETT PISZKOZAT: a böngészőé vagy a szerveré, amelyik frissebb. Ha az utolsó
+      // sikeres mentés újabb nála (pl. közben másik gépről mentett), elavult — eldobjuk.
+      const actorEmail=data.actor?.email||"";
+      const targetEmail=data.target||actorEmail;
+      const k=draftKey(actorEmail, targetEmail, d);
+      const helyi=readDraft(k);
+      const szerver=data.draft?.payload ? { ...data.draft.payload, savedAt: new Date(data.draft.updatedAt).getTime() } : null;
+      let dr=[helyi,szerver].filter(Boolean).sort((a,b)=>(b.savedAt||0)-(a.savedAt||0))[0]||null;
+      const utolsoMentes=m?.updatedAt ? new Date(m.updatedAt).getTime() : 0;
+      if(dr && !(dr.savedAt>utolsoMentes)){ dropDraft(k); dr=null; }
+      const allTasks=[...baseTasks, ...orphans];
+      if(dr && dr.ent){
+        const ismert=new Set(allTasks.map(t=>t.id));
+        (dr.extraTasks||[]).forEach(t=>{ if(t && t.id && !ismert.has(t.id) && dr.ent[t.id]?.on){ ismert.add(t.id);
+          allTasks.push({ ...t, url:t.url||null, tags:t.tags||[], archived:true, status:t.status||"lezárt",
+            client:t.client||"Korábban rögzített" }); } });
+        Object.keys(dr.ent).forEach(id=>{ if(!ismert.has(id)) delete dr.ent[id]; });
+        setTasks(allTasks);
+        setEnt(dr.ent);
+        setLoc(dr.loc||m?.location||"");
+        setPartial(!!dr.partial); setMissingH(dr.missingH||""); setReason(dr.reason||"");
+        setDirty(true);
+        setDraftNote(dr.savedAt||Date.now());
+        writeDraft(k, dr);
+      }else{
+        setTasks(allTasks);
+        setEnt(e);
+      }
+      setLoaded({ date:d, target:targetEmail, actor:actorEmail, forParam:forEmail||"" });
+    }catch(e){ if(my===seq.current) setMsg({type:"err",text:e.message}); }
+    finally{ if(my===seq.current) setLoading(false); }
+  }
+
+  // A válasz olvasása úgy, hogy egy nem-JSON válasz (pl. időtúllépés, belépőoldal) is
+  // érthető üzenetet adjon, ne „Unexpected token" hibát.
+  async function readJson(r){
+    const t=await r.text();
+    try{ return JSON.parse(t); }
+    catch(e){
+      if(r.status===401) return { error:"Lejárt a belépésed. Lépj be újra — a beírt adataid ebben a böngészőben megmaradtak." };
+      return { error:`A szerver nem várt választ adott (${r.status}). A beírt adataid ebben a böngészőben megmaradtak — próbáld újra pár perc múlva.` };
+    }
+  }
+
+  // A piszkozat tartalma: az űrlap állapota, plusz azoknak a bepipált feladatoknak az adatai,
+  // amelyek közben kieshetnek a ClickUp-listából (lezárták őket) — így azok is visszajönnek.
+  function draftPayload(){
+    const extraTasks=tasks.filter(t=>ent[t.id]?.on).map(t=>({ id:t.id, name:t.name, url:t.url||null,
+      client:t.client, parentId:t.parentId||null, parentName:t.parentName||null, status:t.status||"" }));
+    return { ent, loc, partial, missingH, reason, extraTasks, savedAt: Date.now() };
+  }
+  function flushDraft(){
+    if(!dirty || !loaded) return;
+    writeDraft(draftKey(loaded.actor, loaded.target, loaded.date), draftPayload());
+  }
+  // Helyi mentés gépelés közben (rövid késleltetéssel), szerveres másolat ritkábban.
+  useEffect(()=>{
+    if(!dirty || !loaded) return;
+    const k=draftKey(loaded.actor, loaded.target, loaded.date);
+    const p=draftPayload();
+    const t1=setTimeout(()=>writeDraft(k,p), 400);
+    const t2=setTimeout(()=>{
+      fetch("/api/draft",{ method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ date:loaded.date, for: loaded.forParam||undefined, payload:p }) }).catch(()=>{});
+    }, 4000);
+    return ()=>{ clearTimeout(t1); clearTimeout(t2); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[ent,loc,partial,missingH,reason,dirty,loaded]);
+  // Nem mentett adattal ne lehessen észrevétlenül bezárni a lapot.
+  useEffect(()=>{
+    const h=(ev)=>{ if(dirty){ flushDraft(); ev.preventDefault(); ev.returnValue=""; } };
+    window.addEventListener("beforeunload", h);
+    return ()=>window.removeEventListener("beforeunload", h);
+  });
+  useEffect(()=>{ pruneDrafts(); },[]);
+
+  async function discardDraft(){
+    if(!loaded) return;
+    if(!window.confirm("Biztosan elveted a nem mentett módosításokat? Az utoljára mentett állapot jön vissza.")) return;
+    dropDraft(draftKey(loaded.actor, loaded.target, loaded.date));
+    await fetch("/api/draft",{ method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ date:loaded.date, for: loaded.forParam||undefined, torles:true }) }).catch(()=>{});
+    setDirty(false);
+    load(loaded.date, loaded.forParam);
   }
   useEffect(()=>{ if(status==="authenticated") load(); },[status]);
-  function switchTarget(email){ setTarget(email); load(date, email); }
+  function switchTarget(email){ flushDraft(); setTarget(email); load(date, email); }
 
   function get(id){ return ent[id] || {on:false, lines:[emptyLine()]}; }
   function toggle(id, on){
+    setDirty(true);
     const cur=get(id);
     setEnt(s=>({ ...s, [id]:{ on, lines: (cur.lines&&cur.lines.length)?cur.lines:[emptyLine()] } }));
   }
   function setLine(id, i, patch){
+    setDirty(true);
     const cur=get(id); const lines=cur.lines.map((l,idx)=> idx===i?{...l,...patch}:l);
     setEnt(s=>({ ...s, [id]:{ ...cur, lines } }));
   }
-  function addLine(id){ const cur=get(id); setEnt(s=>({ ...s, [id]:{ ...cur, lines:[...cur.lines, emptyLine()] } })); }
+  function addLine(id){ setDirty(true); const cur=get(id); setEnt(s=>({ ...s, [id]:{ ...cur, lines:[...cur.lines, emptyLine()] } })); }
   function removeLine(id, i){
+    setDirty(true);
     const cur=get(id); let lines=cur.lines.filter((_,idx)=>idx!==i);
     if(!lines.length) lines=[emptyLine()];
     setEnt(s=>({ ...s, [id]:{ ...cur, lines } }));
@@ -145,40 +258,56 @@ export default function Home(){
   const total = useMemo(()=> Object.values(ent).reduce((a,e)=> a+(e.on? e.lines.reduce((s,l)=>s+(l.min||0),0):0),0),[ent]);
   const doneCount = tasks.filter(t=> isFinished(t) && recentlyDone(t)).length;
 
+  // Hiba és visszajelzés: a Mentés gomb mellett is megjelenik, és odagörgetünk — hosszú
+  // feladatlistánál a lap tetején lévő üzenetet a kolléga nem látta, és azt hitte, mentett.
+  function say(m){ setMsg(m); setTimeout(()=>{ try{ footMsg.current?.scrollIntoView({behavior:"smooth",block:"center"}); }catch(e){} }, 50); }
+
   async function submit(){
+    if(!loaded || loaded.date!==date){ say({type:"err",text:"Nincs mentve! Az űrlap nem a kiválasztott napot mutatja. Kattints a „Feladatok behívása” gombra, majd mentsd újra — a beírt adataid megmaradtak."}); return; }
     const rows=[];
     tasks.forEach(t=>{ const e=ent[t.id]; if(!e||!e.on) return;
       e.lines.forEach(l=>{ if((l.min||0)>0) rows.push({
         taskId:t.id, taskName:t.name, parentId:t.parentId, parentName:t.parentName,
         client:t.client, activity:l.activity, minutes:l.min, archived:!!t.archived }); });
     });
-    if(!rows.length){ setMsg({type:"err",text:"Pipálj be legalább egy feladatot és adj meg időt."}); return; }
+    if(!rows.length){ say({type:"err",text:"Nincs mentve! Pipálj be legalább egy feladatot és adj meg időt."}); return; }
     const noAct = rows.filter(r=>!r.archived && (!r.activity || !String(r.activity).trim()));
-    if(noAct.length){ setMsg({type:"err",text:"Válassz tevékenységtípust minden bejegyzéshez: "+[...new Set(noAct.map(r=>r.taskName))].join(", ")}); return; }
-    if(!loc){ setMsg({type:"err",text:"Jelöld be, hogy aznap irodában vagy home office-ban dolgoztál."}); return; }
+    if(noAct.length){ say({type:"err",text:"Nincs mentve! Válassz tevékenységtípust minden bejegyzéshez: "+[...new Set(noAct.map(r=>r.taskName))].join(", ")}); return; }
+    if(!loc){ say({type:"err",text:"Nincs mentve! Jelöld be a lap tetején, hogy aznap irodában vagy home office-ban dolgoztál."}); return; }
     const missingMinutes = partial ? Math.round(Number(String(missingH).replace(",","."))*60) : 0;
     if(partial){
-      if(!(missingMinutes>0)){ setMsg({type:"err",text:"Add meg, hány óra esett ki aznap."}); return; }
-      if(missingMinutes >= dailyHours(date)*60){ setMsg({type:"err",text:"A kieső idő nem lehet több az aznapi munkaidőnél. Egész napos távollétet a Szabadság menüpontban jelölj."}); return; }
-      if(!reason.trim()){ setMsg({type:"err",text:"Írd le, miért nem volt teljes a munkanap."}); return; }
+      if(!(missingMinutes>0)){ say({type:"err",text:"Nincs mentve! Add meg, hány óra esett ki aznap."}); return; }
+      if(missingMinutes >= dailyHours(date)*60){ say({type:"err",text:"Nincs mentve! A kieső idő nem lehet több az aznapi munkaidőnél. Egész napos távollétet a Szabadság menüpontban jelölj."}); return; }
+      if(!reason.trim()){ say({type:"err",text:"Nincs mentve! Írd le, miért nem volt teljes a munkanap."}); return; }
     }
     // Csak azokat a feladatokat jelezzük törlésre, amelyeknek volt adata, de most
     // nincs beküldve (a felhasználó levette a pipát / kinullázta). Más feladatot a
     // szerver nem bánt, így újramentéskor nem tűnhet el korábbi tétel.
     const submittedIds = new Set(rows.map(r=>r.taskId));
     const removedIds = origIds.filter(id=>!submittedIds.has(id));
+    const napja=loaded.date, kinek=loaded.forParam;
+    flushDraft();
     setLoading(true); setMsg(null);
     try{
-      const r = await fetch("/api/time",{ method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ date, rows, location: loc, partial,
-          missingMinutes, reason: reason.trim(), for: target||undefined,
-          removedIds }) });
-      const d = await r.json();
-      if(!r.ok) throw new Error(d.error||"Mentési hiba");
-      setMsg({type:"ok",text:(target? `${me?.name} nevében mentve: ` : "Mentve: ")
-        + `${d.saved} tétel, összesen ${fmt(total)} — ${date} (${loc==="iroda"?"iroda":"home office"})`
+      let r;
+      try{
+        r = await fetch("/api/time",{ method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({ date:napja, rows, location: loc, partial,
+            missingMinutes, reason: reason.trim(), for: kinek||undefined,
+            removedIds }) });
+      }catch(e){ throw new Error("Nincs mentve! Nem sikerült elérni a szervert (internetkapcsolat?). A beírt adataid ebben a böngészőben megmaradtak — próbáld újra."); }
+      const d = await readJson(r);
+      if(!r.ok) throw new Error("Nincs mentve! "+(d.error||"Mentési hiba."));
+      // VISSZAOLVASOTT MEGERŐSÍTÉS: amit a szerver a mentés után az adatbázisban talált.
+      const st=d.stored||{};
+      const helyStr=loc==="iroda"?"iroda":"home office";
+      dropDraft(draftKey(loaded.actor, loaded.target, napja));
+      setDirty(false);
+      await load(napja, kinek, { keepMsg:true });
+      say({type:"ok",text:(kinek? `${me?.name} nevében mentve és ellenőrizve. ` : "Mentve és ellenőrizve. ")
+        + `Az adatbázisban most ${st.db ?? d.saved} tétel van, összesen ${fmt(st.perc ?? total)} — ${napja} (${helyStr})`
         + (partial? `, nem teljes munkanap: ${fmt(missingMinutes)} kiesés.` : ".")});
-    }catch(e){ setMsg({type:"err",text:e.message}); }
+    }catch(e){ say({type:"err",text:e.message}); }
     finally{ setLoading(false); }
   }
 
@@ -220,16 +349,16 @@ export default function Home(){
           )}
           <div className="fld"><label>{target?"Hol dolgozott?":"Hol dolgoztál?"}</label>
             <div className="chips">
-              <button className={"chip"+(loc==="iroda"?" sel":"")} onClick={()=>setLoc("iroda")}>🏢 Iroda</button>
-              <button className={"chip"+(loc==="home"?" sel":"")} onClick={()=>setLoc("home")}>🏠 Home office</button>
+              <button className={"chip"+(loc==="iroda"?" sel":"")} onClick={()=>{ setDirty(true); setLoc("iroda"); }}>🏢 Iroda</button>
+              <button className={"chip"+(loc==="home"?" sel":"")} onClick={()=>{ setDirty(true); setLoc("home"); }}>🏠 Home office</button>
             </div>
           </div>
           <div className="fld"><label>Munkanap</label>
             <div className="chips">
-              <button className={"chip"+(partial?" sel":"")} onClick={()=>setPartial(p=>!p)}>⏳ Nem teljes munkanap</button>
+              <button className={"chip"+(partial?" sel":"")} onClick={()=>{ setDirty(true); setPartial(p=>!p); }}>⏳ Nem teljes munkanap</button>
             </div>
           </div>
-          <button className="btn" onClick={()=>load()} disabled={loading}>{loading?"Betöltés…":"Feladatok behívása"}</button>
+          <button className="btn" onClick={()=>{ flushDraft(); load(); }} disabled={loading}>{loading?"Betöltés…":"Feladatok behívása"}</button>
         </div>
 
         {partial && (
@@ -237,7 +366,7 @@ export default function Home(){
             <div className="row1" style={{alignItems:"flex-end"}}>
               <div className="fld"><label>Kieső idő (óra)</label>
                 <input className="cmin" type="number" min="0.5" step="0.5" max={dailyHours(date)-0.5}
-                  value={missingH} onChange={e=>setMissingH(e.target.value)} placeholder="pl. 2"/>
+                  value={missingH} onChange={e=>{ setDirty(true); setMissingH(e.target.value); }} placeholder="pl. 2"/>
               </div>
               <div className="muted" style={{fontSize:12,paddingBottom:8}}>
                 Aznapi teljes munkaidő: <b>{dailyHours(date)} óra</b>{new Date(date+"T00:00:00").getDay()===5?" (péntek)":""} ·
@@ -247,7 +376,7 @@ export default function Home(){
             <div className="fld" style={{marginTop:8}}>
               <label>Indoklás</label>
               <input type="text" className="reason" value={reason} maxLength={300}
-                onChange={e=>setReason(e.target.value)}
+                onChange={e=>{ setDirty(true); setReason(e.target.value); }}
                 placeholder="pl. orvosi vizsgálat napközben, engedéllyel"/>
             </div>
             <div className="muted" style={{fontSize:11.5,marginTop:8}}>
@@ -261,6 +390,10 @@ export default function Home(){
 
       {target && <div className="status ok" style={{background:"#fff7e6",borderColor:"#e6c98a",color:"#8a5a00"}}>
         Most <b>{me?.name}</b> nevében rögzítesz. A mentés az ő nevén jelenik meg, a rendszer eltárolja, hogy te vitted fel.
+      </div>}
+      {draftNote && <div className="status ok" style={{background:"#fff7e6",borderColor:"#e6c98a",color:"#8a5a00",display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+        <span>Visszahoztuk a <b>nem mentett</b> piszkozatodat ({hhmm(draftNote)}). Nézd át, és kattints a <b>Mentés</b> gombra.</span>
+        <button className="btn sec" onClick={discardDraft}>Piszkozat elvetése</button>
       </div>}
       {msg && <div className={"status "+msg.type}>{msg.text}</div>}
 
@@ -323,7 +456,13 @@ export default function Home(){
         <div className="foot">
           <div className="total">Napi összesen: <span>{fmt(total)}</span>{loc?<span className="muted" style={{fontWeight:600,fontSize:12.5,marginLeft:8}}>· {loc==="iroda"?"🏢 iroda":"🏠 home office"}</span>:null}
             {partial?<span className="muted" style={{fontWeight:600,fontSize:12.5,marginLeft:8}}>· ⏳ nem teljes nap</span>:null}</div>
-          <button className="btn" onClick={submit} disabled={loading}>Mentés</button>
+          <button className="btn" onClick={submit} disabled={loading}>{loading?"Mentés…":"Mentés"}</button>
+        </div>
+      )}
+      {tasks.length>0 && (
+        <div ref={footMsg}>
+          {msg ? <div className={"status "+msg.type}>{msg.text}</div>
+            : dirty ? <div className="muted" style={{fontSize:12,textAlign:"right",marginTop:6}}>Nem mentett módosítás — a piszkozat ebben a böngészőben megmarad.</div> : null}
         </div>
       )}
     </div>
