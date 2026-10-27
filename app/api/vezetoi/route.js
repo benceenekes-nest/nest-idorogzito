@@ -127,8 +127,9 @@ export async function GET(req){
   ].filter(e=>e && e!==me && !isExcluded(e)));
   const people = [...roster].map(email=>{
     const logged = byUser[email]||0;
-    const cap = Math.max(capacityMinFor(email,effFrom,to) - (leaveMin[email]||0) - (missingMin[email]||0), 0);
-    return { email, name:nameOf[email]||email, loggedMin:logged, capacityMin:cap,
+    const gross = capacityMinFor(email,effFrom,to);
+    const cap = Math.max(gross - (leaveMin[email]||0) - (missingMin[email]||0), 0);
+    return { email, name:nameOf[email]||email, loggedMin:logged, capacityMin:cap, grossCapMin:gross,
       leaveMin:leaveMin[email]||0, missingMin:missingMin[email]||0,
       leaveDays:leaveDays[email]||0, sickDays:sickDays[email]||0,
       location: locByUser[email]||{iroda:0,home:0},
@@ -224,7 +225,7 @@ export async function GET(req){
   const completedRange = doneUniq.filter(x=>x.doneDate>=from && x.doneDate<=to);
 
   return Response.json({
-    range:{ from, to, capacityMin:baseCap }, today:t,
+    range:{ from, to, effFrom, trackerStart:TRACKER_START, capacityMin:baseCap }, today:t,
     people, byClient, byActivity, byWeek,
     completed:{ today:completedToday, yesterday:completedYesterday, range:completedRange,
       counts:{ today:completedToday.length, yesterday:completedYesterday.length, range:completedRange.length } },

@@ -84,6 +84,11 @@ export default function Vezetoi(){
       {!d && !err && <div className="card muted">Betöltés…</div>}
 
       {d && <>
+        <div className="note" style={{margin:"0 0 10px"}}>
+          Betöltött időszak: <b>{d.range.from} … {d.range.to}</b>
+          {(d.range.from!==from || d.range.to!==to) && !loading && <> · a szűrő megváltozott, nyomj <b>Frissítést</b>.</>}
+          {d.range.trackerStart && d.range.from<d.range.trackerStart && <> · Az időrögzítő {d.range.trackerStart}-án indult: korábbról nincs adat, a kihasználtság is ettől a naptól számol.</>}
+        </div>
         <div className="kpis">
           <div className="kpi"><div className="kpival">{fmt(Object.values(d.byClient).reduce((a,b)=>a+b,0))}</div><div className="kpilabel">Rögzített idő</div></div>
           <div className="kpi"><div className="kpival">{avgPct(d.people)}</div><div className="kpilabel">Átlagos kihasználtság</div></div>
@@ -109,7 +114,7 @@ export default function Vezetoi(){
                     <td className="n"><b style={{color:pctColor(x.pct)}}>{x.pct==null?"–":x.pct+"%"}</b></td>
                   </tr>))}
                 </tbody></table>
-              <div className="note">Kattints egy kollégára a részletezőhöz.</div>
+              <div className="note">Elvárt = munkanapok × napi munkaidő{d.range.effFrom && d.range.effFrom!==d.range.from ? ` (${d.range.effFrom}-tól)` : ""}, mínusz szabadság, betegnap és kieső idő. Kattints egy kollégára a részletezőhöz.</div>
             </div>
             <div className="card">
               <div className="grp" style={{marginTop:0}}>Idő tevékenységtípusonként</div>
@@ -123,13 +128,22 @@ export default function Vezetoi(){
         {tab==="kapacitas" && p && (
           <div className="card">
             <button className="btn sec noprint" onClick={()=>setPerson(null)}>← Vissza</button>
-            <div className="grp">{p.name} — {from} … {to}</div>
+            <div className="grp">{p.name} — {d.range.from} … {d.range.to}{d.range.effFrom && d.range.effFrom!==d.range.from ? ` (adat ${d.range.effFrom}-tól)` : ""}</div>
             <div className="kpis">
               <div className="kpi"><div className="kpival">{fmt(p.loggedMin)}</div><div className="kpilabel">Rögzített idő</div></div>
               <div className="kpi"><div className="kpival">{p.pct==null?"–":p.pct+"%"}</div><div className="kpilabel">Kihasználtság</div></div>
               <div className="kpi"><div className="kpival">{p.leaveDays+p.sickDays}</div><div className="kpilabel">Szabadság + betegnap</div></div>
               <div className="kpi"><div className="kpival">{fmt(p.missingMin)}</div><div className="kpilabel">Kieső idő</div></div>
             </div>
+            <div className="grp">Miből jön a kihasználtság</div>
+            <table><tbody>
+              <tr><td>Elvárt munkaidő ({d.range.effFrom||d.range.from} … {d.range.to})</td><td className="n">{fmt(p.grossCapMin)}</td></tr>
+              <tr><td>− szabadság és betegnap ({p.leaveDays+p.sickDays} nap)</td><td className="n">{fmt(p.leaveMin)}</td></tr>
+              <tr><td>− kieső idő (nem teljes munkanapok)</td><td className="n">{fmt(p.missingMin)}</td></tr>
+              <tr><td><b>= ledolgozható idő</b></td><td className="n"><b>{fmt(p.capacityMin)}</b></td></tr>
+              <tr><td>Rögzített idő</td><td className="n">{fmt(p.loggedMin)}</td></tr>
+              <tr><td><b>Kihasználtság</b> (rögzített ÷ ledolgozható)</td><td className="n"><b style={{color:pctColor(p.pct)}}>{p.pct==null?"–":p.pct+"%"}</b></td></tr>
+            </tbody></table>
             <div className="grp">Idő ügyfelenként</div>
             <ClientBars key={p.email} byClient={p.byClient} entries={p.entries||{}}/>
             <div className="note">Kattints egy ügyfélre, hogy lásd, min dolgozott nekik.</div>
@@ -204,7 +218,7 @@ export default function Vezetoi(){
           </>
         )}
 
-        {tab==="elvegzett" && <Elvegzett d={d} from={from} to={to}/>}
+        {tab==="elvegzett" && <Elvegzett d={d} from={d.range.from} to={d.range.to}/>}
 
         {tab==="tavollet" && (
           <>
