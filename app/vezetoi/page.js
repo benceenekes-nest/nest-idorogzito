@@ -131,7 +131,8 @@ export default function Vezetoi(){
               <div className="kpi"><div className="kpival">{fmt(p.missingMin)}</div><div className="kpilabel">Kieső idő</div></div>
             </div>
             <div className="grp">Idő ügyfelenként</div>
-            <Bars rows={Object.entries(p.byClient).sort((a,b)=>b[1]-a[1])}/>
+            <ClientBars key={p.email} byClient={p.byClient} entries={p.entries||{}}/>
+            <div className="note">Kattints egy ügyfélre, hogy lásd, min dolgozott nekik.</div>
             <div className="grp">Nem teljes munkanapok</div>
             {d.absence.partialDays.filter(x=>x.email===p.email).length
               ? <table><thead><tr><th>Dátum</th><th className="n">Kieső</th><th>Indoklás</th></tr></thead>
@@ -248,6 +249,54 @@ export default function Vezetoi(){
       </>}
     </div>
   );
+}
+
+// Kolléga-részletező: ügyfelenkénti csík, kattintásra lenyílik a feladatok és a tételek listája.
+function ClientBars({ byClient, entries }){
+  const [open,setOpen]=useState(null);
+  const rows=Object.entries(byClient).sort((a,b)=>b[1]-a[1]);
+  if(!rows.length) return <div className="muted">Nincs adat.</div>;
+  const max=Math.max(...rows.map(r=>r[1]),1);
+  return <div className="bars">{rows.map(([name,v])=>{
+    const isOpen=open===name;
+    const list=(entries[name]||[]).slice().sort((a,b)=>b.date.localeCompare(a.date)||b.minutes-a.minutes);
+    // feladatonkénti összesítő, a legtöbb időt vivő elöl
+    const byTask={};
+    list.forEach(e=>{ const k=e.taskId||e.task; (byTask[k] ||= { ...e, minutes:0, days:new Set() }); byTask[k].minutes+=e.minutes; byTask[k].days.add(e.date); });
+    const tasks=Object.values(byTask).sort((a,b)=>b.minutes-a.minutes);
+    return <div key={name}>
+      <div className="barrow clickrow" onClick={()=>setOpen(isOpen?null:name)} style={{cursor:"pointer"}}>
+        <div className="barlabel" title={name}>{isOpen?"▾ ":"▸ "}{name}</div>
+        <div className="bartrack"><div className="barfill" style={{width:Math.max(3,v/max*100)+"%"}}/></div>
+        <div className="barval">{fmt(v)}</div>
+      </div>
+      {isOpen && <div style={{margin:"4px 0 10px 12px",borderLeft:"2px solid var(--beige)",paddingLeft:12}}>
+        {!list.length ? <div className="muted">Nincs tétel.</div> : <>
+          <table><thead><tr><th>Feladat</th><th className="n">Napok</th><th className="n">Idő</th></tr></thead>
+            <tbody>{tasks.map(t=>(
+              <tr key={t.taskId||t.task}>
+                <td><TaskName e={t}/></td>
+                <td className="n">{t.days.size}</td>
+                <td className="n">{fmt(t.minutes)}</td>
+              </tr>))}</tbody></table>
+          <div className="grp" style={{fontSize:11}}>Napi bontás</div>
+          <table><thead><tr><th>Dátum</th><th>Feladat</th><th>Tevékenység</th><th className="n">Idő</th></tr></thead>
+            <tbody>{list.map((e,i)=>(
+              <tr key={i}>
+                <td>{e.date.slice(5)}</td>
+                <td><TaskName e={e}/></td>
+                <td>{e.activity}</td>
+                <td className="n">{fmt(e.minutes)}</td>
+              </tr>))}</tbody></table>
+        </>}
+      </div>}
+    </div>;
+  })}</div>;
+}
+
+function TaskName({ e }){
+  const label = e.parent ? <><span className="muted">{e.parent} › </span>{e.task}</> : e.task;
+  return e.taskId ? <a href={"https://app.clickup.com/t/"+e.taskId} target="_blank" rel="noopener">{label}</a> : label;
 }
 
 function DoneTable({ rows }){

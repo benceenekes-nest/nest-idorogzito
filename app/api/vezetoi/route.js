@@ -88,11 +88,14 @@ export async function GET(req){
   const byClient = sum(teamEntries, r=>normClient(r.client));
   const byActivity = sum(teamEntries, r=>r.activity);
   const byUserClient = {};
+  const byUserEntries = {};   // a kolléga-részletezőhöz: ügyfelenként a tételek
   const byClientActivity = {};
   const byWeek = {};
   teamEntries.forEach(r=>{
     const u=r.user_email, c=normClient(r.client)||"—", a=r.activity||"—", m=Number(r.minutes||0);
     (byUserClient[u] ||= {}); byUserClient[u][c]=(byUserClient[u][c]||0)+m;
+    ((byUserEntries[u] ||= {})[c] ||= []).push({ date:d2s(r.work_date), taskId:r.task_id,
+      task:r.task_name||"—", parent:r.parent_name||null, activity:a, minutes:m });
     (byClientActivity[c] ||= {}); byClientActivity[c][a]=(byClientActivity[c][a]||0)+m;
     const w=weekStart(d2s(r.work_date)); (byWeek[w] ||= {}); byWeek[w][u]=(byWeek[w][u]||0)+m;
   });
@@ -130,6 +133,7 @@ export async function GET(req){
       leaveDays:leaveDays[email]||0, sickDays:sickDays[email]||0,
       location: locByUser[email]||{iroda:0,home:0},
       byClient: byUserClient[email]||{},
+      entries: byUserEntries[email]||{},
       pct: cap>0 ? Math.round(logged/cap*1000)/10 : null };
   }).sort((a,b)=>b.loggedMin-a.loggedMin);
 
